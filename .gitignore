@@ -41,3 +41,7 @@ c5_pin_model_dump.txt
 *.qarlog
 qar_info.json
 *.swp
+*.o
+*.asm
+*.log
+
