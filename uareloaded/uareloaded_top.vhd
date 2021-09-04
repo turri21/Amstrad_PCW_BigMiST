@@ -194,8 +194,9 @@ ps2_keyboard_clk <= '0' when ps2_keyboard_clk_out='0' else 'Z';
 JOY_SELECT<= '1';
 
 	
-joya<="11" & JOYSTICK1(5) & JOYSTICK1(4) & JOYSTICK1(1) & JOYSTICK1(0) & JOYSTICK1(2) &JOYSTICK1(3);
-joyB<="11" & JOYSTICK2(5) & JOYSTICK2(4) & JOYSTICK2(1) & JOYSTICK2(0) & JOYSTICK2(2) &JOYSTICK2(3);
+joya<="11" & JOYSTICK1(5) & JOYSTICK1(4) & JOYSTICK1(0) & JOYSTICK1(1) & JOYSTICK1(2) &JOYSTICK1(3);
+joyB<="11" & JOYSTICK2(5) & JOYSTICK2(4) & JOYSTICK2(0) & JOYSTICK2(1) & JOYSTICK2(2) &JOYSTICK2(3);
+
 
 joyc<=(others=>'1');
 joyd<=(others=>'1');
@@ -236,8 +237,8 @@ port map(
 	  R_data    => std_logic_vector (dac_r_s)
 );
 
-dac_l_s <= (dac_l & dac_l(9 downto 4));
-dac_r_s <= (dac_r & dac_r(9 downto 4));
+dac_l_s <= '0' & dac_l & "00000";
+dac_r_s <= '0' & dac_r & "00000";
 
 guest: COMPONENT  PCW
 	PORT map

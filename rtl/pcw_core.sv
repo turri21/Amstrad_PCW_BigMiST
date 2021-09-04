@@ -579,7 +579,7 @@ module pcw_core(
         // Port B - used for CPU and download access
         .b_clk(clk_sys),
         .b_wr(dn_go ? dn_wr : ~memw & ~|ram_b_addr[20:17]),
-        .b_addr(dn_go ? dn_addr[17:0] : ram_b_addr[16:0]),
+        .b_addr(dn_go ? dn_addr[16:0] : ram_b_addr[16:0]),
         .b_din(dn_go ? dn_data : cpudo),
         .b_dout(dpram_b_dout)
     );

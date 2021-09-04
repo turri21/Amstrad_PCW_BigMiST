@@ -64,6 +64,7 @@ localparam BOOT_ROM_END = 16'd275;	// Length of boot rom
 localparam CONF_STR = {
 	"PCW;;",
 	"S0,DSK,Mount A:;",
+	"S1,DSK,Mount B:;",
 	"O4,System Model,8256/8512,9256/9512+;",
 	"OFG,Memory Size,256K,512K,1MB,2MB;",
 	"O89,Clockspeed Mhz,4,8,16,32;",
