@@ -243,7 +243,7 @@ module pcw_core(
         .A(cpua),
         .DI(cpudi),
         .DO(cpudo),
-		.REG(cpu_reg),
+		  .REG(cpu_reg),
         .DIR(cpu_reg_out),
         .DIRSet(cpu_reg_set)  
     );
@@ -568,7 +568,7 @@ module pcw_core(
     // Addresses are made up of 4 bits of page number and 14 bits of offset
     // Port A is used for display memory access but can only access 128k
     logic [7:0] dpram_b_dout;
-    dpram #(.DATA(8), .ADDR(18)) main_mem(
+    dpram #(.DATA(8), .ADDR(17)) main_mem(
         // Port A is used for display memory access
         .a_clk(clk_sys),
         .a_wr(1'b0),        // Video never writes to display memory
@@ -578,8 +578,8 @@ module pcw_core(
 
         // Port B - used for CPU and download access
         .b_clk(clk_sys),
-        .b_wr(dn_go ? dn_wr : ~memw & ~|ram_b_addr[20:18]),
-        .b_addr(dn_go ? dn_addr[17:0] : ram_b_addr[17:0]),
+        .b_wr(dn_go ? dn_wr : ~memw & ~|ram_b_addr[20:17]),
+        .b_addr(dn_go ? dn_addr[16:0] : ram_b_addr[16:0]),
         .b_din(dn_go ? dn_data : cpudo),
         .b_dout(dpram_b_dout)
     );
@@ -600,7 +600,7 @@ module pcw_core(
         .ready(ram_ready)
     );
 
-    wire sdram_access = |ram_b_addr[20:18] && memory_size > MEM_256K;
+    wire sdram_access = |ram_b_addr[20:17]; // && memory_size > MEM_256K;
     assign ram_b_dout = sdram_access ? sdram_b_dout : dpram_b_dout;
 
     // Edge detectors for moving fake pixel line using F9 and F10 keys
@@ -765,7 +765,7 @@ module pcw_core(
         .*
     );
 
-    // Kempston mouse driver
+//    // Kempston mouse driver
     logic [7:0] kempston_dout;
     wire kempston_sel = ~ior && (cpua[7:0] ==? 8'b110100?? || cpua[7:0]==8'hd4) && mouse_type==MOUSE_KEMPSTON;
     kempston_mouse kempston_mouse(
