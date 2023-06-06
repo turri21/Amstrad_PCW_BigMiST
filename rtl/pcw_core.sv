@@ -225,7 +225,8 @@ module pcw_core(
     logic daisy_sel;
     assign daisy_sel = ((cpua[7:0]==8'hfc || cpua[7:0]==8'hfd) & model) && (~ior | ~iow)? 1'b1 : 1'b0;
 
-    wire WAIT_n = sdram_access ? ram_ready : 1'b1;
+    wire WAIT_n = (ram_ready | (cpuiorq & cpumreq));
+	 
     // Create processor instance
     T80pa cpu(
        	.RESET_n(~reset),
