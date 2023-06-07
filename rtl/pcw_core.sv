@@ -39,7 +39,7 @@ module pcw_core(
     input wire reset,           // Reset
 	input wire clk_sys,         // 64 Mhz System Clock
 
-    output logic [17:0] RGB,    // RGB Output (6-6-6)     
+    output logic [23:0] RGB,    // RGB Output (8-8-8)     
 	output logic hsync,         // Horizontal sync
 	output logic vsync,         // Vertical sync
 	output logic hblank,        // Horizontal blanking
@@ -224,8 +224,7 @@ module pcw_core(
     assign kbd_sel = ram_b_addr[20:4]==17'b00000111111111111 && memr==1'b0 ? 1'b1 : 1'b0;
     logic daisy_sel;
     assign daisy_sel = ((cpua[7:0]==8'hfc || cpua[7:0]==8'hfd) & model) && (~ior | ~iow)? 1'b1 : 1'b0;
-
-    wire WAIT_n = (ram_ready | (cpuiorq & cpumreq));
+    wire WAIT_n = sdram_access ? ram_ready : cpumreq;
 	 
     // Create processor instance
     T80pa cpu(
@@ -627,11 +626,11 @@ module pcw_core(
         end
     end
 
-    logic [1:0] colour;
+    logic [3:0] colour;
 
-    logic [17:0] rgb_white;
-    logic [17:0] rgb_green;
-    logic [17:0] rgb_amber;
+    logic [23:0] rgb_white;
+    logic [23:0] rgb_green;
+    logic [23:0] rgb_amber;
 
     logic cpu_reg_set = 1'b0;
     logic [211:0] cpu_reg = 'b0;
@@ -678,24 +677,24 @@ module pcw_core(
 
     // Video colour processing
     always_comb begin
-        rgb_white = 18'b111111111111110111;
-        if(colour==2'b00) rgb_white = 18'b000000000000000000;
-        else if(colour==2'b11) rgb_white = 18'b111111111111110111;
+        rgb_white = 24'hAAAAAA;
+        if(colour==4'b0000) rgb_white = 24'h000000;
+        else if(colour==4'b1111) rgb_white = 24'hAAAAAA;
     end
 
     always_comb begin
-        rgb_green = 18'b011001111111011001;
-        if(colour==2'b00) rgb_green = 18'b000000000000000000;
-        else if(colour==2'b11) rgb_green = 18'b011001111111011001;
+        rgb_green = 24'h00aa00;
+        if(colour==4'b0000) rgb_green = 24'h000000;
+        else if(colour==4'b1111) rgb_green = 24'h00aa00;
     end
 
     always_comb begin
-        rgb_amber = 18'b111111101100000000;
-        if(colour==2'b00) rgb_amber = 18'b000000000000000000;
-        else if(colour==2'b11) rgb_amber = 18'b111111101100000000;
+        rgb_amber = 24'hff5500;
+        if(colour==4'b0000) rgb_amber = 24'h000000;
+        else if(colour==4'b1111) rgb_amber = 24'hff5500;
     end
 
-    logic [17:0] mono_colour;
+    logic [23:0] mono_colour;
     always_comb begin
         if(disp_color==2'b00) mono_colour = rgb_white;
         else if(disp_color==2'b01) mono_colour = rgb_green;
@@ -709,31 +708,35 @@ module pcw_core(
             case(fake_colour_mode)
                 2'b00: RGB = mono_colour;
                 2'b01: begin    // CGA Palette 0 Low
-                    case(colour)
-                        2'b00: RGB =  18'b000000000000000000;   // Black
-                        2'b01: RGB =  18'b000000101011000000;   // Dark Green
-                        2'b10: RGB =  18'b101011000000000000;   // Dark Red
-                        2'b11: RGB =  18'b101011010110000000;   // Brown
+                    case(colour[3:2])
+                        2'b00: RGB =  24'h000000;   // Black
+                        2'b01: RGB =  24'h00aaaa;   // Cyan
+                        2'b10: RGB =  24'haa00aa;   // Magenta
+                        2'b11: RGB =  24'haaaaaa;   // White
                     endcase                    
                 end
-                2'b10: begin    // CGA Palette 0 High
+                2'b10: begin    // EGA PALETTE
                     case(colour)
-                        2'b00: RGB =  18'b000000000000000000;   // Black
-                        2'b01: RGB =  18'b010110111111010110;   // Light Green
-                        2'b10: RGB =  18'b111111010110010110;   // Light Red
-                        2'b11: RGB =  18'b111111111111010110;   // Yellow
+                        4'b0000: RGB =  24'h000000;   // Black
+                        4'b0001: RGB =  24'h0000aa;   // Blue
+                        4'b0010: RGB =  24'h00aa00;   // Green
+                        4'b0011: RGB =  24'h00aaaa;   // Cyan
+                        4'b0100: RGB =  24'haa0000;   // Red
+                        4'b0101: RGB =  24'haa00aa;   // Magenta
+                        4'b0110: RGB =  24'haa5500;   // Yellow Brown
+                        4'b0111: RGB =  24'haaaaaa;   // White / gray
+                        4'b1000: RGB =  24'h555555;   // dark gray
+                        4'b1001: RGB =  24'h5555ff;   // Light blue
+                        4'b1010: RGB =  24'h55ff55;   // Light green
+                        4'b1011: RGB =  24'h55ffff;   // light cyan
+                        4'b1100: RGB =  24'hff5555;   // light red
+                        4'b1101: RGB =  24'hff55ff;   // Light magenta
+                        4'b1110: RGB =  24'hffff55;   // Light yellow
+                        4'b1111: RGB =  24'hffffff;   // bright white
                     endcase                    
                 end
-                2'b11: begin    // CGA Palette 1 High
-                    case(colour)
-                        2'b00: RGB =  18'b000000000000000000;   // Black
-                        2'b01: RGB =  18'b010110111111111111;   // Cyan
-                        2'b10: RGB =  18'b111111010110111111;   // Magenta
-                        2'b11: RGB =  rgb_white;   // White
-                    endcase                    
-                end
-            endcase
-        end
+			endcase
+		end
     end
 
     logic [7:0] daisy_dout;

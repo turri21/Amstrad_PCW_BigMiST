@@ -1,5 +1,4 @@
 
-
 module PCW
 (
 	//Master input clock
@@ -69,7 +68,7 @@ localparam CONF_STR = {
 	"OFG,Memory Size,256K,512K,1MB,2MB;",
 	"O89,Clockspeed Mhz,4,8,16,32;",
 	"O56,Screen Color,White,Green,Amber;",
-	"OIJ,Fake Colour,None,Palette 1, Palette 2, Palette 3;",
+	"OIJ,Fake Colour,None,Palette CGA, Palette EGA;",
 	"O7,Video System,PAL,NTSC;",
 	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"OAC,Joystick Type,None,Kempston,Spectravideo,Cascade,DKTronics;",
@@ -90,12 +89,6 @@ pll pll
 
 wire [31:0] status;
 wire  [1:0] buttons;
-wire        ioctl_download;
-wire        ioctl_wr;
-wire [15:0] ioctl_addr;
-wire  [7:0] ioctl_data;
-wire  [7:0] ioctl_index;
-wire		   ioctl_wait;
 wire [31:0] sd_lba;
 wire  [1:0] sd_rd;
 wire  [1:0] sd_wr;
@@ -139,13 +132,6 @@ mist_io #(.STRLEN(($size(CONF_STR)>>3) )) mist_io
 	
 	.status(status),
 
-	.ioctl_download(ioctl_download),
-	.ioctl_wr(ioctl_wr),
-	.ioctl_addr(ioctl_addr),
-	.ioctl_dout(ioctl_data),
-	//.ioctl_wait(ioctl_wait),
-	.ioctl_index(ioctl_index),
-
 	.sd_lba(sd_lba),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
@@ -156,12 +142,10 @@ mist_io #(.STRLEN(($size(CONF_STR)>>3) )) mist_io
 	.sd_buff_wr(sd_buff_wr),
 
 	.img_mounted(img_mounted),
-	//.img_readonly(img_readonly),
 	.img_size(img_size)
 );
 
-wire rom_download = ioctl_download && ioctl_index==0;
-wire reset = ~locked | status[0] | rom_download;
+wire reset = ~locked | status[0];
 
 // signals from loader
 logic loader_wr;		
@@ -283,7 +267,7 @@ pcw_core pcw_core
 );
 ///////////////////////////////////////////////////
 wire        ce_pix;
-wire [17:0] RGB;
+wire [23:0] RGB;
 wire        HSync,VSync,HBlank,VBlank;
 
 wire  [2:0] scale = status[3:1];
@@ -302,9 +286,9 @@ video_mixer #(.LINE_LENGTH(1024)) video_mixer
    .ypbpr_full(0),
    .line_start(0),
    .mono(0),
-	.R(RGB[5:0]),
-	.G(RGB[11:6]),
-	.B(RGB[17:12])
+	.B(RGB[7:2]),
+	.G(RGB[15:10]),
+	.R(RGB[23:18])
 );
 
 wire  [8:0] audiomix;

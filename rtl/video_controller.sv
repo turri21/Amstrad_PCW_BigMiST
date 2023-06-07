@@ -50,7 +50,7 @@ module video_controller(
 	output logic [16:0] vid_addr,   // Address Bus out for reading pixel data & roller ram
 	input wire [7:0] din,           // Data in for pixel data and roller ram
 
-	output logic [1:0] colour,
+	output logic [3:0] colour,
 	output logic ce_pix,
 	output logic hsync,
 	output logic vsync,
@@ -164,7 +164,7 @@ module video_controller(
 
     // Pixel shift register loader
     logic [7:0] pixel_reg = 'b0;
-    logic [1:0] pixel;
+    logic [3:0] pixel;
     always @ (posedge clk_sys)
     begin
         if(ce_pix)
@@ -181,7 +181,7 @@ module video_controller(
                 else pixel_reg <= {pixel_reg[6:0], 1'b0};  
             end 
             // Load pixel register
-            pixel <= (fake_colour && y < fake_end) ? pixel_reg[7:6] : {pixel_reg[7], pixel_reg[7]};
+            pixel <= (fake_colour && y < fake_end) ? pixel_reg[7:4] : {pixel_reg[7], pixel_reg[7],pixel_reg[7], pixel_reg[7]};
         end
     end
 
@@ -190,11 +190,11 @@ module video_controller(
     begin
         if(inverse) begin
             if(!disable_vid && active) colour = ~pixel;
-            else colour = 2'b11;  // Disabled inverse video 
+            else colour = 2'b1111;  // Disabled inverse video 
         end    
         else begin
             if(!disable_vid && active) colour = pixel;
-            else colour = 2'b00;     
+            else colour = 2'b0000;     
         end
     end
     

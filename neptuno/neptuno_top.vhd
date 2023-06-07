@@ -110,6 +110,8 @@ architecture RTL of neptuno_top is
 -- RS232 serial
 	signal rs232_rxd : std_logic;
 	signal rs232_txd : std_logic;
+	
+	signal led_tmp : std_logic;
 
 
 	
@@ -143,7 +145,6 @@ COMPONENT  PCW
 		UART_TX    :   OUT STD_LOGIC;
 		UART_RX    :   IN STD_LOGIC;
 		SPI_DO		:	 OUT STD_LOGIC;
---		SPI_SD_DI	:	 IN STD_LOGIC;
 		SPI_DI		:	 IN STD_LOGIC;
 		SPI_SCK		:	 IN STD_LOGIC;
 		SPI_SS2		:	 IN STD_LOGIC;
@@ -316,7 +317,6 @@ guest: COMPONENT  PCW
 		UART_TX  => open,
 		UART_RX  => AUDIO_INPUT,
 		
---		SPI_SD_DI => sd_miso,
 		SPI_DO => spi_fromguest,
 		SPI_DI => spi_toguest,
 		SPI_SCK => spi_clk_int,
@@ -333,10 +333,12 @@ guest: COMPONENT  PCW
 		VGA_B => vga_blue(7 downto 2),
 		AUDIO_L => sigma_l,
 		AUDIO_R => sigma_r,
-		LED     => LED,
+		LED     => LED_TMP,
 		DAC_L   => DAC_L,
 		DAC_R   => DAC_R
 );
+
+LED <= not LED_TMP;
 
 -- Pass internal signals to external SPI interface
 sd_clk <= spi_clk_int;
