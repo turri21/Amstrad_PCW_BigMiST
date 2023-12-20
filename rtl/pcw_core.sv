@@ -86,8 +86,8 @@ module pcw_core(
     input wire execute_enable,
 
     input wire [1:0]  img_mounted,
-	input wire        img_readonly,
-	input wire [31:0] img_size,
+	 input wire        img_readonly,
+	 input wire [31:0] img_size,
     input wire [1:0]  density,
 
 	output logic [31:0] sd_lba,
@@ -156,7 +156,7 @@ module pcw_core(
             2'b11: {cpuclk, cnt} <= cnt + 16'h8000;  // 8x4Mhz - divide by  2: (2^16)/2    = 0x8000
         endcase
     end
-
+    	 
     // Generate fractional Disk clock, capped at 4x
     reg [15:0] dcnt;
     logic disk_clk;
@@ -224,7 +224,8 @@ module pcw_core(
     assign kbd_sel = ram_b_addr[20:4]==17'b00000111111111111 && memr==1'b0 ? 1'b1 : 1'b0;
     logic daisy_sel;
     assign daisy_sel = ((cpua[7:0]==8'hfc || cpua[7:0]==8'hfd) & model) && (~ior | ~iow)? 1'b1 : 1'b0;
-    wire WAIT_n = sdram_access ? ram_ready : cpumreq;
+    //wire WAIT_n = sdram_access ? ram_ready : cpumreq;
+	 wire WAIT_n = sdram_access ? ram_ready : 1'b1;
 	 
     // Create processor instance
     T80pa cpu(
@@ -568,7 +569,7 @@ module pcw_core(
     // Addresses are made up of 4 bits of page number and 14 bits of offset
     // Port A is used for display memory access but can only access 128k
     logic [7:0] dpram_b_dout;
-    dpram #(.DATA(8), .ADDR(17)) main_mem(
+    dpram #(.DATA(8), .ADDR(18)) main_mem(
         // Port A is used for display memory access
         .a_clk(clk_sys),
         .a_wr(1'b0),        // Video never writes to display memory
@@ -578,8 +579,8 @@ module pcw_core(
 
         // Port B - used for CPU and download access
         .b_clk(clk_sys),
-        .b_wr(dn_go ? dn_wr : ~memw & ~|ram_b_addr[20:17]),
-        .b_addr(dn_go ? dn_addr[16:0] : ram_b_addr[16:0]),
+        .b_wr(dn_go ? dn_wr : ~memw & ~|ram_b_addr[20:18]),
+        .b_addr(dn_go ? dn_addr[17:0] : ram_b_addr[17:0]),
         .b_din(dn_go ? dn_data : cpudo),
         .b_dout(dpram_b_dout)
     );
@@ -590,6 +591,7 @@ module pcw_core(
     sdram sdram
     (
         .*,
+		  .wtbt(2'b0),
         .init(~locked),
         .clk(clk_sys),
         .dout(sdram_b_dout),
@@ -600,7 +602,7 @@ module pcw_core(
         .ready(ram_ready)
     );
 
-    wire sdram_access = |ram_b_addr[20:17]; // && memory_size > MEM_256K;
+    wire sdram_access = |ram_b_addr[20:18] && memory_size > MEM_256K;
     assign ram_b_dout = sdram_access ? sdram_b_dout : dpram_b_dout;
 
     // Edge detectors for moving fake pixel line using F9 and F10 keys
