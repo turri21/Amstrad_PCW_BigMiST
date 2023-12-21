@@ -396,10 +396,8 @@ pcw_core pcw_core
 	.sd_dout_strobe(sd_buff_wr),
 	// SD RAM signals not explicitly named
 	.locked(locked),
-	.SDRAM_CLK(),
 	.*	
 );
-assign SDRAM_CLK = ~clk_sys;
 
 ///////////////////////////////////////////////////
 wire        ce_pix;

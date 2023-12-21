@@ -569,7 +569,7 @@ module pcw_core(
     // Addresses are made up of 4 bits of page number and 14 bits of offset
     // Port A is used for display memory access but can only access 128k
     logic [7:0] dpram_b_dout;
-    dpram #(.DATA(8), .ADDR(18)) main_mem(
+    dpram #(.DATA(8), .ADDR(17)) main_mem(
         // Port A is used for display memory access
         .a_clk(clk_sys),
         .a_wr(1'b0),        // Video never writes to display memory
@@ -579,8 +579,8 @@ module pcw_core(
 
         // Port B - used for CPU and download access
         .b_clk(clk_sys),
-        .b_wr(dn_go ? dn_wr : ~memw & ~|ram_b_addr[20:18]),
-        .b_addr(dn_go ? dn_addr[17:0] : ram_b_addr[17:0]),
+        .b_wr(dn_go ? dn_wr : ~memw & ~|ram_b_addr[20:17]),
+        .b_addr(dn_go ? dn_addr[16:0] : ram_b_addr[16:0]),
         .b_din(dn_go ? dn_data : cpudo),
         .b_dout(dpram_b_dout)
     );
@@ -591,7 +591,6 @@ module pcw_core(
     sdram sdram
     (
         .*,
-		  .wtbt(2'b0),
         .init(~locked),
         .clk(clk_sys),
         .dout(sdram_b_dout),
@@ -602,7 +601,7 @@ module pcw_core(
         .ready(ram_ready)
     );
 
-    wire sdram_access = |ram_b_addr[20:18] && memory_size > MEM_256K;
+    wire sdram_access = |ram_b_addr[20:17];// && memory_size > MEM_256K;
     assign ram_b_dout = sdram_access ? sdram_b_dout : dpram_b_dout;
 
     // Edge detectors for moving fake pixel line using F9 and F10 keys
