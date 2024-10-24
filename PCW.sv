@@ -1,6 +1,8 @@
 `default_nettype none
 
-module guest_top(
+
+module guest_top
+(
 	input         CLOCK_27,
 `ifdef USE_CLOCK_50
 	input         CLOCK_50,
@@ -76,6 +78,12 @@ module guest_top(
 	output        I2S_LRCK,
 	output        I2S_DATA,
 `endif
+`ifdef I2S_AUDIO_HDMI
+	output        HDMI_MCLK,
+	output        HDMI_BCK,
+	output        HDMI_LRCK,
+	output        HDMI_SDATA,
+`endif
 `ifdef SPDIF_AUDIO
 	output        SPDIF,
 `endif
@@ -123,12 +131,12 @@ localparam bit BIG_OSD = 0;
 `endif
 
 `ifdef USE_AUDIO_IN
-wire TAPE_SOUND = AUDIO_IN;
+localparam bit USE_AUDIO_IN = 1;
+wire TAPE_SOUND=AUDIO_IN;
 `else
-wire TAPE_SOUND = UART_RX;
+localparam bit USE_AUDIO_IN = 0;
+wire TAPE_SOUND=UART_RX;
 `endif
-	
-
 
 
 localparam BOOT_ROM_END = 16'd275;	// Length of boot rom
@@ -160,7 +168,7 @@ localparam CONF_STR = {
 wire locked;
 pll pll
 (
-	.inclk0   (CLOCK_27),
+	.inclk0   (CLOCK_50),
 	.c0 (clk_sys), // 64 MHz
 	.locked (locked)
 );
@@ -204,6 +212,18 @@ always @(posedge clk_sys) if (mouse_strobe) mouse_strobe_level <= ~mouse_strobe_
 wire [10:0] ps2_key ={key_strobe,key_pressed,key_extended,key_code};
 wire [15:0] joystick_0, joystick_1;
 
+`ifdef USE_HDMI
+wire        i2c_start;
+wire        i2c_read;
+wire  [6:0] i2c_addr;
+wire  [7:0] i2c_subaddr;
+wire  [7:0] i2c_dout;
+wire  [7:0] i2c_din;
+wire        i2c_ack;
+wire        i2c_end;
+`endif
+
+
 user_io #(.STRLEN($size(CONF_STR)>>3), .SD_IMAGES(2), .FEATURES(32'h0 | (BIG_OSD << 13) | (HDMI << 14))) user_io
 (
 	.clk_sys(clk_sys),
@@ -215,6 +235,17 @@ user_io #(.STRLEN($size(CONF_STR)>>3), .SD_IMAGES(2), .FEATURES(32'h0 | (BIG_OSD
 	.SPI_MOSI(SPI_DI),
 	.SPI_MISO(SPI_DO),
 
+`ifdef USE_HDMI
+	.i2c_start      (i2c_start      ),
+	.i2c_read       (i2c_read       ),
+	.i2c_addr       (i2c_addr       ),
+	.i2c_subaddr    (i2c_subaddr    ),
+	.i2c_dout       (i2c_dout       ),
+	.i2c_din        (i2c_din        ),
+	.i2c_ack        (i2c_ack        ),
+	.i2c_end        (i2c_end        ),
+`endif	
+	
 	.img_mounted(img_mounted),
 	.img_size(img_size),
 	.sd_conf(1'b0),
@@ -249,31 +280,6 @@ user_io #(.STRLEN($size(CONF_STR)>>3), .SD_IMAGES(2), .FEATURES(32'h0 | (BIG_OSD
 	.no_csync(no_csync)
 
 );
-
-mist_video #(.COLOR_DEPTH(8), .SD_HCNT_WIDTH(10), .USE_BLANKS(1'b1), .OUT_COLOR_DEPTH(VGA_BITS), .BIG_OSD(BIG_OSD)) mist_video (
-	.clk_sys      (clk_sys     ),
-	.SPI_SCK      (SPI_SCK    ),
-	.SPI_SS3      (SPI_SS3    ),
-	.SPI_DI       (SPI_DI     ),
-	.R            (RGB[23:16]),
-	.G            (RGB[15:8]),
-	.B            (RGB[7:0]),
-	.HSync(HSync),
-	.VSync(VSync),
-	.HBlank(HBlank),
-	.VBlank(VBlank),
-	.VGA_R        (VGA_R      ),
-	.VGA_G        (VGA_G      ),
-	.VGA_B        (VGA_B      ),
-	.VGA_VS       (VGA_VS     ),
-	.VGA_HS       (VGA_HS     ),
-	.ce_divider   (1'b0       ),
-	.scandoubler_disable(scandoubler_disable),
-	.scanlines    (status[3:1]),
-	.ypbpr        (ypbpr      ),
-	.no_csync     (no_csync)
-
-	);
 
 
 wire reset = ~locked | status[0]|buttons[1];
@@ -404,8 +410,6 @@ wire        ce_pix;
 wire [23:0] RGB;
 wire        HSync,VSync,HBlank,VBlank;
 
-wire  [2:0] scale = status[3:1];
-
 
 wire  [8:0] audiomix;
 dac #(
@@ -419,35 +423,109 @@ audiodac_l(
 
 assign AUDIO_R=AUDIO_L;
 
-`ifdef I2S_AUDIO
-
-wire [31:0] clk_rate =  32'd32_000_000;
 wire [15:0] dac_out ={audiomix,7'b0000000};
 
-//i2s i2s (
-//	.reset(reset),
-//	.clk(i2s_clock),
-//	.clk_rate(clk_rate),
-//
-//	.sclk(I2S_BCK),
-//	.lrclk(I2S_LRCK),
-//	.sdata(I2S_DATA),
-//
-//	.left_chan (dac_out),
-//	.right_chan(dac_out)
-//);
 
-audio_top audio_top
-(
-  .clk_50MHz  (CLOCK_27),
-  .dac_MCLK   (),
-  .dac_LRCK   (I2S_LRCK),
-  .dac_SCLK   (I2S_BCK),
-  .dac_SDIN   (I2S_DATA),
-  .L_data     ({~dac_out[15],dac_out[14:0]}),
-  .R_data     ({~dac_out[15],dac_out[14:0]})
+mist_video #(.COLOR_DEPTH(8), .SD_HCNT_WIDTH(10), .USE_BLANKS(1'b1), .OUT_COLOR_DEPTH(VGA_BITS), .BIG_OSD(BIG_OSD)) mist_video (
+	.clk_sys      (clk_sys     ),
+	.SPI_SCK      (SPI_SCK    ),
+	.SPI_SS3      (SPI_SS3    ),
+	.SPI_DI       (SPI_DI     ),
+	.R            (RGB[23:16]),
+	.G            (RGB[15:8]),
+	.B            (RGB[7:0]),
+	.HSync(HSync),
+	.VSync(VSync),
+	.HBlank(HBlank),
+	.VBlank(VBlank),
+	.VGA_R        (VGA_R      ),
+	.VGA_G        (VGA_G      ),
+	.VGA_B        (VGA_B      ),
+	.VGA_VS       (VGA_VS     ),
+	.VGA_HS       (VGA_HS     ),
+	.ce_divider   (1'b0       ),
+	.scandoubler_disable(scandoubler_disable),
+	.scanlines    (status[3:1]),
+	.ypbpr        (ypbpr      ),
+	.no_csync     (no_csync)
+
+	);
+
+`ifdef USE_HDMI
+i2c_master #(32_000_000) i2c_master (
+	.CLK         (clk_sys),
+	.I2C_START   (i2c_start),
+	.I2C_READ    (i2c_read),
+	.I2C_ADDR    (i2c_addr),
+	.I2C_SUBADDR (i2c_subaddr),
+	.I2C_WDATA   (i2c_dout),
+	.I2C_RDATA   (i2c_din),
+	.I2C_END     (i2c_end),
+	.I2C_ACK     (i2c_ack),
+
+	//I2C bus
+	.I2C_SCL     (HDMI_SCL),
+	.I2C_SDA     (HDMI_SDA)
 );
 
+mist_video #(.COLOR_DEPTH(8), .SD_HCNT_WIDTH(11),.OUT_COLOR_DEPTH(8), .USE_BLANKS(1), .BIG_OSD(BIG_OSD), .VIDEO_CLEANER(1)) hdmi_video (
+	.*,
+	.clk_sys     ( clk_sys   ),
+	.scanlines   (status[3:1]),
+	.ce_divider  ( 3'd0       ),
+	.scandoubler_disable (scandoubler_disable),
+	.rotate      ( 2'b00      ),
+	.blend       ( 1'b0       ),
+	.no_csync    ( no_csync),
+	.R           ( RGB[23:16] ),
+	.G           ( RGB[15:8]  ),
+	.B           ( RGB[7:0]   ),
+	.HBlank      ( HBlank     ),
+	.VBlank      ( VBlank     ),	
+	.HSync       ( HSync      ),
+	.VSync       ( VSync      ),
+	.VGA_R       ( HDMI_R     ),
+	.VGA_G       ( HDMI_G     ),
+	.VGA_B       ( HDMI_B     ),
+	.VGA_VS      ( HDMI_VS    ),
+	.VGA_HS      ( HDMI_HS    ),
+	.VGA_HB(),
+	.VGA_VB(),
+   .VGA_DE      ( HDMI_DE    )
+);
+assign HDMI_PCLK = clk_sys;
 `endif
 
+`ifdef I2S_AUDIO
+i2s i2s (
+	.reset(1'b0),
+	.clk(clk_sys),
+	.clk_rate(32'd32_000_000),
+
+	.sclk(I2S_BCK),
+	.lrclk(I2S_LRCK),
+	.sdata(I2S_DATA),
+
+	.left_chan({~dac_out[15],dac_out[14:0]}),
+	.right_chan({~dac_out[15],dac_out[14:0]})
+);
+`ifdef I2S_AUDIO_HDMI
+assign HDMI_MCLK = 0;
+always @(posedge clk_sys) begin
+	HDMI_BCK <= I2S_BCK;
+	HDMI_LRCK <= I2S_LRCK;
+	HDMI_SDATA <= I2S_DATA;
+end
+`endif
+`endif
+`ifdef SPDIF_AUDIO
+spdif spdif
+(
+	.clk_i(clk_sys),
+	.rst_i(reset),
+	.clk_rate_i(32'd32_000_000),
+	.spdif_o(SPDIF),
+	.sample_i({{~dac_out[15],dac_out[14:0]},{~dac_out[15],dac_out[14:0]}})
+);
+`endif
 endmodule
