@@ -151,10 +151,14 @@ localparam CONF_STR = {
 	"OFG,Memory Size,256K,512K,1MB,2MB;",
 	"O89,Clockspeed,4,8,16,32;",
 	`SEP
-	"O56,CRT Color,White,Green,Amber;",
-	"OIJ,Fake Color,None,CGA,EGA;",
-	"O7,Video System,PAL,NTSC;",
-	"O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"P1,Video;",
+   "P1O56,Screen Color,White,Green,Amber;",
+   "P1O7,Video System,PAL,NTSC;",
+   "P1F3,gbp,Load Palette;",
+   "P1OQR,Fake Colour,None,Loaded palette, PCWPLUS;",
+   "P1OIL,CRT H-Sync Adjust,0,1,2,3,4,5,6,7,-8,-7,-6,-5,-4,-3,-2,-1;",
+   "P1OMP,CRT V-Sync Adjust,0,1,2,3,4,5,6,7,-8,-7,-6,-5,-4,-3,-2,-1;",
+   "P1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%, CRT 75%;",	
 	`SEP
 	"OAC,Joystick,None,Kempston,Spectravideo,Cascade,DKTronics;",
 	"ODE,Mouse,None,AMX,Kempston,Keymouse;",
@@ -176,7 +180,7 @@ pll pll
 wire        no_csync;
 wire        ypbpr;
 
-wire [31:0] status;
+wire [63:0] status;
 wire  [1:0] buttons,switches;
 
 
@@ -281,6 +285,27 @@ user_io #(.STRLEN($size(CONF_STR)>>3), .SD_IMAGES(2), .FEATURES(32'h0 | (BIG_OSD
 
 );
 
+wire        ioctl_download;
+wire        ioctl_wr;
+wire [15:0] ioctl_addr;
+wire  [7:0] ioctl_data;
+wire  [7:0] ioctl_index;
+
+data_io data_io(
+        .clk_sys       ( clk_sys      ),
+        .SPI_SCK       ( SPI_SCK      ),
+        .SPI_SS2       ( SPI_SS2      ),
+        .SPI_DI        ( SPI_DI       ),
+        .clkref_n      ( 1'b0         ),
+        .ioctl_download( ioctl_download),
+        .ioctl_index   ( ioctl_index  ),
+        .ioctl_wr      ( ioctl_wr     ),
+        .ioctl_addr    ( ioctl_addr   ),
+        .ioctl_dout    ( ioctl_data   )
+);
+
+wire rom_download = ioctl_download && (ioctl_index==0);
+wire palette_download = ioctl_download && (ioctl_index == 3);
 
 wire reset = ~locked | status[0]|buttons[1];
 
@@ -347,6 +372,13 @@ boot_loader boot_loader
 
 wire tmpled;
 assign LED=~tmpled;
+reg [127:0] palette = 128'h00000032cd320000ff00ffff00000000;
+
+always @(posedge clk_sys) begin
+        if (palette_download & ioctl_wr) begin
+                        palette[127:0] <= {palette[119:0], ioctl_data[7:0]};
+        end
+end
 
 pcw_core pcw_core
 (
@@ -376,7 +408,10 @@ pcw_core pcw_core
 	.model(status[4]),
 	.memory_size(status[16:15]),
 	.dktronics(status[17]),
-	.fake_colour_mode(status[19:18]),
+	.palette (palette),
+	.fake_colour_mode(status[27:26]),
+	.VShift(status[25:22]),
+   .HShift(status[21:18]),
 
 	.dn_clk(clk_sys),
 	.dn_go(loader_download),

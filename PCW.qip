@@ -1,4 +1,4 @@
-set_global_assignment -name QIP_FILE ../rtl/T80/T80.qip
+set_global_assignment -name QIP_FILE ../T80/T80.qip
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/key_joystick.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/mouse.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/amx_mouse.sv
@@ -17,4 +17,5 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/sdram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/z80_debugger.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/sd_debug.v
 set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/edge_det.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/ce_generator.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../PCW.sv
