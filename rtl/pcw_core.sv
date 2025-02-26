@@ -233,7 +233,7 @@ module pcw_core(
         .RESET_n(~reset),
         .CLK(gclk),
         .CEN_p(cpu_ce_g_p),
-        .CEN_n(cpu_ce_g_p),
+        .CEN_n(cpu_ce_g_n),
         .M1_n(cpum1),
         .WAIT_n(WAIT_n),
         .MREQ_n(cpumreq),
