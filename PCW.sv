@@ -304,74 +304,15 @@ data_io data_io(
         .ioctl_dout    ( ioctl_data   )
 );
 
-wire rom_download = ioctl_download && (ioctl_index==0);
 wire palette_download = ioctl_download && (ioctl_index == 3);
 
 wire reset = ~locked | status[0]|buttons[1];
 
-// signals from loader
-logic loader_wr;		
-logic loader_download;
-reg [15:0] loader_addr;
-reg [7:0] loader_data;
-reg [15:0] execute_addr;
-logic execute_enable;
-logic loader_wait;
-
-// Boot loader to kickstart system on a reset
-// Required because the ROM is overwritten and needs to be reloaded every reset
-// First detect end of reset pulse to kickstart download
-logic reset_ne;
-logic first_byte;
-edge_det reset_edge_det(.clk_sys(clk_sys), .signal(reset), .neg_edge(reset_ne));
-
-logic [15:0] read_addr;
-logic [7:0] read_data;
-always @(posedge clk_sys)
-begin
-	if(reset_ne)
-	begin
-		read_addr <= 'b0;
-		loader_addr <= 'b0;
-		loader_wr <= 1'b0;
-		execute_enable <= 1'b0;
-		loader_download <= 1'b1;
-		execute_addr <= 'b0;
-	end
-	else begin
-		if(loader_download) 
-		begin
-			if(~loader_wr) 
-			begin
-				// Transfer loaded byte to loader
-				loader_data <= read_data;
-				loader_wr <= 1'b1;
-			end
-			else begin
-				loader_wr <= 1'b0;
-				loader_addr <= loader_addr + 'd1;
-				read_addr <= read_addr + 'd1;
-				if(read_addr >= BOOT_ROM_END)
-				begin
-					loader_download <= 1'b0;
-					execute_enable <= 1'b1;
-				end
-			end
-		end		
-		if(execute_enable) execute_enable <= 1'b0;
-	end
-end
-
-// Rom containing boot rom code to transfer to address 0
-boot_loader boot_loader
-(
-	.address(read_addr),
-	.data(read_data)
-);
 
 
 wire tmpled;
 assign LED=~tmpled;
+
 reg [127:0] palette = 128'h00000032cd320000ff00ffff00000000;
 
 always @(posedge clk_sys) begin
@@ -412,16 +353,7 @@ pcw_core pcw_core
 	.fake_colour_mode(status[27:26]),
 	.VShift(status[25:22]),
    .HShift(status[21:18]),
-
-	.dn_clk(clk_sys),
-	.dn_go(loader_download),
-	.dn_wr(loader_wr),
-	.dn_addr(loader_addr),			// CPU = 0000-FFFF; cassette = 10000-1FFFF
-	.dn_data(loader_data),
-
-	.execute_addr(execute_addr),
-	.execute_enable(execute_enable),
-
+	
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),
 	.img_size(img_size),

@@ -78,14 +78,6 @@ module pcw_core(
 	 output        SDRAM_nWE,
     input         locked,
 
-    input wire dn_clk,
-    input wire dn_go,
-    input wire dn_wr,
-    input wire [24:0] dn_addr,
-    input wire [7:0] dn_data,
-
-    input wire [15:0] execute_addr,
-    input wire execute_enable,
 
     input wire [1:0]  img_mounted,
 	 input wire        img_readonly,
@@ -139,7 +131,29 @@ module pcw_core(
         .ce_4mhz(disk_ce),
         .ce_1mhz(snd_ce)
     ); 
-	 wire dn_active;
+	 
+   wire dn_wr;
+    wire dn_rd;
+    wire [24:0] dn_addr;
+    wire [7:0] dn_data;
+    wire dn_active;
+    wire [15:0] execute_addr;
+    wire execute_enable;
+	 
+	 pcw_starter pcw_starter(
+        .clk(clk_sys),
+        .reset(reset),
+        .sdram_clk_ref(sdram_clk_ref),
+        .sdram_ready(sdram_ready),
+        .model(model),
+        .wr(dn_wr),
+        .rd(dn_rd),
+        .addr(dn_addr),
+        .data(dn_data),
+        .active(dn_active),
+        .exec_addr(execute_addr),
+        .exec_enable(execute_enable)
+    );
 	 
     // Audio channels
     logic [7:0] ch_a;
@@ -159,18 +173,20 @@ module pcw_core(
     logic [7:0] cpudo;
     logic [7:0] cpudi;
     logic cpuwr,cpurd,cpumreq,cpuiorq,cpum1;
-    logic cpuclk, cpuclk_r;
     logic romrd,ramrd,ramwr;
     logic ior,iow,memr,memw;
 	 
 	 reg cpu_ce_g_p /* synthesis keep */;
     reg cpu_ce_g_n /* synthesis keep */;
     reg gclk /* synthesis keep */;
-    assign cpu_ce_g_p = dn_active ? 1'b0 : cpu_ce_p;
-    assign cpu_ce_g_n = dn_active ? 1'b0 : cpu_ce_n;
-    assign gclk = dn_active ? 1'b0 : clk_sys;
-
-    reg [1:0] tstate /* synthesis keep */;
+    assign cpu_ce_g_p = dn_active ? 0 : cpu_ce_p;
+    assign cpu_ce_g_n = dn_active ? 0 : cpu_ce_n;
+    assign gclk = dn_active ? 0 : clk_sys;
+	 
+	 reg cpu_reset;
+	 assign cpu_reset = reset || dn_active;
+    
+	 reg [1:0] tstate /* synthesis keep */;
     reg WAIT_n /* synthesis keep */;
     reg [20:0] sdram_addr;
     wire rfsh;
@@ -178,7 +194,7 @@ module pcw_core(
     always @(posedge clk_sys)
     begin
         cpu_ce_g_p_last <= cpu_ce_g_p;
-        if (~reset == 1'b1) begin
+        if (cpu_reset == 1'b1) begin
             tstate <= 2'b00;
         end else begin
             if (~cpu_ce_g_p_last & cpu_ce_g_p) begin
@@ -187,8 +203,10 @@ module pcw_core(
         end
     end
     assign WAIT_n = tstate == 2'b01 || ~ior || ~iow;
-	 
-    // CPU register debugging for Signal Tap
+	 reg mux_sdram;
+    assign mux_sdram = dn_active ? 1'b0 : tstate == 2'b11;
+    
+	 // CPU register debugging for Signal Tap
     logic [15:0] PC /* synthesis keep */; 
     logic [15:0] SP /* synthesis keep */;
     logic [7:0]  AC /* synthesis keep */;
@@ -216,8 +234,8 @@ module pcw_core(
         .dir_set(cpu_reg_set),
         .dir_out(cpu_reg_out)
     );
-
-
+	 
+	 
     // CPU / memory access flags
     assign ior = cpurd | cpuiorq | ~cpum1;
     assign iow = cpuwr | cpuiorq | ~cpum1;
@@ -230,7 +248,7 @@ module pcw_core(
 
 	 // Create processor instance
     T80pa cpu(
-        .RESET_n(~reset),
+        .RESET_n(~cpu_reset),
         .CLK(gclk),
         .CEN_p(cpu_ce_g_p),
         .CEN_n(cpu_ce_g_n),
@@ -518,7 +536,7 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
             else if(cpudo[3:0] == 4'd2) begin           // Disk to NMI
                 disk_to_nmi <= 1'b1;
                 disk_to_int <= 1'b0;
-                //int_mode_change <= 1'b1;
+                int_mode_change <= 1'b1;
             end
             else if(cpudo[3:0] == 4'd3) begin           // Disk to INT
                 disk_to_int <= 1'b1;
@@ -577,10 +595,13 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
     logic int_line = 1'b0;
     logic nmi_line = 1'b0;
     logic clear_timer = 1'b0;
-    logic [4:0] clear_timer_count = 'b0;   // 32 count cycle to clear timer after read
+    logic [1:0] clear_timer_count = 'b0;   // //Clear timer after two M1 activations
+	 logic last_cpum1;
+	 
     // Timer flag and interrupt flag drivers
     always @(posedge clk_sys)
     begin
+	     last_cpum1 <= cpum1;
         if(timer_pe) 
         begin
             // Timer count and int line processing
@@ -601,16 +622,16 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
             clear_timer_count <= 'b0;
         end
         // Clear timer processing
-        if(clear_timer)
+          if(clear_timer)
         begin
-            if(&clear_timer_count)
+            if(clear_timer_count == 2'b10)
             begin
                 // Reached top so clear flag
                 clear_timer <= 1'b0;
                 timer_line <= 1'b0;
                 timer_misses <= 'b0;
             end
-            else clear_timer_count <= clear_timer_count + 4'd1;
+            else if (~cpum1 & last_cpum1) clear_timer_count <= clear_timer_count + 2'b01;
         end
         // Clear interrupts
         if(int_mode_pe)
@@ -737,13 +758,13 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
 
         // Port B - used for CPU and download access
         .b_clk(clk_sys),
-        .b_wr(dn_go ? dn_wr : ~memw & ~|ram_b_addr[20:17]),
-        .b_addr(dn_go ? dn_addr[16:0] : ram_b_addr[16:0]),
-        .b_din(dn_go ? dn_data : cpudo),
+        .b_wr(dn_active ? dn_wr : ~memw & ~|ram_b_addr[20:17]),
+        .b_addr(dn_active ? dn_addr[16:0] : ram_b_addr[16:0]),
+        .b_din(dn_active ? dn_data : cpudo),
         .b_dout(dpram_b_dout)
     );
 
-    logic ram_ready;
+    logic sdram_ready;
     logic [7:0] sdram_b_dout;
     // Extended SDRAM for memory above 256K.  2MB in size, but first 256K will not be used
     sdram sdram
@@ -756,7 +777,7 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
         .addr(ram_b_addr),
         .we(~memw & sdram_access), 
         .rd(~memr & sdram_access),
-        .ready(ram_ready)
+        .ready(sdram_ready)
     );
 
     //wire sdram_access = |ram_b_addr[20:18] && memory_size > MEM_256K;
@@ -928,7 +949,7 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
     fake_daisy daisy(
         .reset(reset),
         .clk_sys(clk_sys),
-        .ce(cpuclk),
+        .ce(cpu_ce_g_p),
         .sel(daisy_sel),
         .address({cpua[8],cpua[0]}),
         .wr(~iow),
