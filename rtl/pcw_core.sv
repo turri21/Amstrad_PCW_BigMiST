@@ -119,6 +119,7 @@ module pcw_core(
     wire pix_stb /* synthesis keep */;
     wire disk_ce /* synthesis keep */;
     wire snd_ce /* synthesis keep */;
+	 wire snd_clk /* synthesis keep */;
     
 	 ce_generator ce_generator(
         .clk(clk_sys),
@@ -128,6 +129,7 @@ module pcw_core(
         .sdram_clk_ref(sdram_clk_ref),
         .ce_16mhz(pix_stb),
         .ce_4mhz(disk_ce),
+		  .clk_2mhz(snd_clk),
         .ce_1mhz(snd_ce)
     ); 
 	 
@@ -1040,7 +1042,7 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
 //    ); 
 
 psg soundchip(
-    .clock(cpu_ce_g_p),       
+    .clock(snd_clk),       
     .sel(1'b0),            
     .ce(dktronics),
     .reset(~reset),         
