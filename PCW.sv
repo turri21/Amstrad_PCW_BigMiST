@@ -149,7 +149,6 @@ localparam CONF_STR = {
 	`SEP
 	"O4,Model,8256/8512,9256/9512+;",
 	"OFG,Memory Size,256K,512K,1MB,2MB;",
-	"O89,Clockspeed,4,8,16,32;",
 	`SEP
 	"P1,Video;",
    "P1O56,Screen Color,White,Green,Amber;",
@@ -345,7 +344,6 @@ pcw_core pcw_core
 
 	.disp_color(status[6:5]),
 	.ntsc(status[7]),
-	.overclock(status[9:8]),
 	.model(status[4]),
 	.memory_size(status[16:15]),
 	.dktronics(status[17]),
@@ -378,9 +376,9 @@ wire [23:0] RGB;
 wire        HSync,VSync,HBlank,VBlank;
 
 
-wire  [8:0] audiomix;
+wire  [13:0] audiomix;
 dac #(
-   .c_bits                              (9))
+   .c_bits                              (14))
 audiodac_l(
    .clk_i                               (clk_sys ),
    .res_n_i                             (1       ),
@@ -390,7 +388,7 @@ audiodac_l(
 
 assign AUDIO_R=AUDIO_L;
 
-wire [15:0] dac_out ={audiomix,7'b0000000};
+wire [15:0] dac_out ={audiomix,2'b00};
 
 
 mist_video #(.COLOR_DEPTH(8), .SD_HCNT_WIDTH(10), .USE_BLANKS(1'b1), .OUT_COLOR_DEPTH(VGA_BITS), .BIG_OSD(BIG_OSD)) mist_video (

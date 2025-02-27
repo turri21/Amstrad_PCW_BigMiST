@@ -49,7 +49,7 @@ module pcw_core(
     input  [3:0] HShift,
 
     output logic LED,           // LED output
-    output logic [8:0] audiomix,
+    output logic [13:0] audiomix,
     input wire [7:0] joy0,
     input wire [7:0] joy1,
     input wire [2:0] joy_type,
@@ -57,7 +57,6 @@ module pcw_core(
     input wire [24:0] ps2_mouse,
     input wire [1:0] mouse_type,
     input wire [1:0] disp_color,
-    input wire [1:0] overclock,
     input wire ntsc,
     input wire model,
     input wire [1:0] memory_size,
@@ -156,10 +155,10 @@ module pcw_core(
     );
 	 
     // Audio channels
-    logic [7:0] ch_a;
-    logic [7:0] ch_b;
-    logic [7:0] ch_c;
-    logic [9:0] audio;
+    logic [11:0] ch_a;
+    logic [11:0] ch_b;
+    logic [11:0] ch_c;
+    logic [13:0] audio;
     logic speaker_enable = 1'b0;
 
     // dpram addressing
@@ -1024,21 +1023,37 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
 
     logic [7:0] dk_out;
     // Audio processing
-    ym2149 soundchip(
-        .DI(cpudo),
-        .DO(dk_out),
-		.BDIR(dk_busdir),
-        .BC(dk_bc),
-        .SEL(1'b0),
-        .MODE(1'b0),
-	    .CHANNEL_A(ch_a),
-        .CHANNEL_B(ch_b),
-        .CHANNEL_C(ch_c),
-	      .IOA_in(dkjoy_io),
-        .CE(snd_ce & dktronics),
-        .RESET(reset),
-        .CLK(clk_sys)
-    ); 
+//    ym2149 soundchip(
+//        .DI(cpudo),
+//        .DO(dk_out),
+//		.BDIR(dk_busdir),
+//        .BC(dk_bc),
+//        .SEL(1'b0),
+//        .MODE(1'b0),
+//	    .CHANNEL_A(ch_a),
+//        .CHANNEL_B(ch_b),
+//        .CHANNEL_C(ch_c),
+//	      .IOA_in(dkjoy_io),
+//        .CE(snd_ce & dktronics),
+//        .RESET(reset),
+//        .CLK(clk_sys)
+//    ); 
+
+psg soundchip(
+    .clock(cpu_ce_g_p),       
+    .sel(1'b0),            
+    .ce(dktronics),
+    .reset(~reset),         
+    .bdir(dk_busdir),      
+    .bc1(dk_bc),           
+    .d(cpudo),             
+    .q(dk_out),            
+    .a(ch_a),              
+    .b(ch_b),              
+    .c(ch_c),              
+    .ioad(dkjoy_io),
+    .iobd(8'b1)	 
+);
 
     // Bleeper audio
     bleeper bleeper(
@@ -1047,18 +1062,18 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
         .speaker(speaker_out)
     );
 
-    logic [7:0] speaker = 'b0;
+    logic [11:0] speaker = 'b0;
     logic speaker_out;
-    assign speaker = {speaker_out, 6'b0};
+    assign speaker = {speaker_out, 11'b0};
     assign audio = {2'b00,ch_a} + {2'b00,ch_b} + {2'b00,ch_c} + {2'b00,speaker};
-    assign audiomix = audio[9:1];
+    assign audiomix = audio;
 
 
     // Floppy disk controller logic and control
     wire fdc_sel = {~cpua[7]};
     
     //wire [7:0] u765_dout;
-    wire [7:0] fdc_dout;// = (fdc_sel & ~ior) ? u765_dout : 8'hFF;
+    wire [7:0] fdc_dout ; //= (fdc_sel & ~ior) ? u765_dout : 8'hFF;
 
     reg  [1:0] u765_ready = 0;
     always @(posedge clk_sys) if(img_mounted[0]) u765_ready[0] <= |img_size;
@@ -1068,7 +1083,6 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
     u765 u765
     (
         .reset(reset),
-
         .clk_sys(clk_sys),
         .ce(disk_ce),
         .a0(cpua[0]),
