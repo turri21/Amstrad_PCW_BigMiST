@@ -365,9 +365,9 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
                     8'h9f: cpudi = (joy_type==JOY_KEMPSTON) ? {3'b0,joy0[4:0]} : 8'hff; // Fire,Up,Down,Left,Right
                     // Floppy controller
                     8'b0000000?: cpudi = fdc_dout;    // Floppy read or write
-					8'h80:  cpudi = port80; 
-					8'h81:  cpudi = port81;
-                    default: cpudi = 8'hff;
+					     8'h80:  cpudi = port80; 
+					     8'h81:  cpudi = port81;
+                  default: cpudi = 8'hff;
 
                 endcase
             end
@@ -568,7 +568,6 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
     edge_det fdc_edge_det(.clk_sys(clk_sys), .signal(fdc_int), .pos_edge(fdc_pe), .neg_edge(fdc_ne));
     //  Drive FDC status latch (portF8) and NMI flag
     logic fdc_status_latch = 1'b0;
-	//    logic clear_fdc_status = 1'b0;
     logic clear_nmi_flag = 1'b0;
     logic nmi_flag = 1'b0;
     always @(posedge clk_sys)
@@ -579,7 +578,7 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
             if(disk_to_nmi) nmi_flag <= 1'b1;
         end
         else if(fdc_ne) fdc_status_latch <= 1'b0;
-	//        if(clear_fdc_status) fdc_status_latch <= 1'b0;
+		  
         if(clear_nmi_flag) nmi_flag <= 1'b0;
     end
 
@@ -1041,6 +1040,9 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
 //        .CLK(clk_sys)
 //    ); 
 
+
+wire [7:0] dacOut;
+
 psg soundchip(
     .clock(snd_clk),       
     .sel(1'b0),            
@@ -1054,7 +1056,8 @@ psg soundchip(
     .b(ch_b),              
     .c(ch_c),              
     .ioad(dkjoy_io),
-    .iobd(8'b1)	 
+    .iobd(8'b1),
+    .iobq(dacOut)	 
 );
 
     // Bleeper audio
@@ -1067,7 +1070,7 @@ psg soundchip(
     logic [11:0] speaker = 'b0;
     logic speaker_out;
     assign speaker = {speaker_out, 11'b0};
-    assign audio = {2'b00,ch_a} + {2'b00,ch_b} + {2'b00,ch_c} + {2'b00,speaker};
+    assign audio = {2'b00,ch_a} + {2'b00,ch_b} + {2'b00,ch_c} + {2'b00,speaker} + {3'b000,dacOut};
     assign audiomix = audio;
 
 
