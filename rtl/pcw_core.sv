@@ -79,14 +79,13 @@ module pcw_core(
 
 
     input wire [1:0]  img_mounted,
-	 input wire        img_readonly,
 	 input wire [31:0] img_size,
     input wire [1:0]  density,
 
 	 output logic [31:0] sd_lba,
 	 output logic [1:0] sd_rd,
 	 output logic [1:0] sd_wr,
-	 input  wire        sd_ack,
+	 input  wire  [1:0] sd_ack,
 	 input  wire  [8:0] sd_buff_addr,
 	 input  wire  [7:0] sd_buff_dout,
 	 output logic [7:0] sd_buff_din,
@@ -1084,16 +1083,19 @@ psg soundchip(
     always @(posedge clk_sys) if(img_mounted[0]) u765_ready[0] <= |img_size;
     always @(posedge clk_sys) if(img_mounted[1]) u765_ready[1] <= |img_size;
 
+	 logic [1:0] motor_p;
+	 assign motor_p ={motor,motor};
     logic fdc_int;
-    u765 u765
+    
+	 u765 u765
     (
         .reset(reset),
         .clk_sys(clk_sys),
         .ce(disk_ce),
         .a0(cpua[0]),
         .ready(u765_ready),
-        .motor({motor,motor}),
-        .available(2'b11),
+        .motor(motor_p),
+        .available(2`b11),
         .nRD(~fdc_sel | ior), 
         .nWR(~fdc_sel | iow),
         .din(cpudo),
@@ -1105,7 +1107,7 @@ psg soundchip(
 
         .img_mounted(img_mounted),
         .img_size(img_size[31:0]),
-        .img_wp(img_readonly),
+        .img_wp(~u765_ready),
         .sd_lba(sd_lba),
         .sd_rd(sd_rd),
         .sd_wr(sd_wr),

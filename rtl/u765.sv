@@ -52,12 +52,12 @@ module u765 #(parameter CYCLES = 20'd4000, SPECCY_SPEEDLOCK_HACK = 0)
 	output logic 	 activity_led,	// Activity LED
 
 	input wire  [1:0] img_mounted, // signaling that new image has been mounted
-	input wire        img_wp,      // write protect. latched at img_mounted
+	input wire  [1:0] img_wp,      // write protect. latched at img_mounted
 	input wire [31:0] img_size,    // size of image in bytes
 	output logic [31:0] sd_lba,
 	output logic  [1:0] sd_rd,
 	output logic  [1:0] sd_wr,
-	input wire       sd_ack,
+	input wire    [1:0] sd_ack,
 	input wire [8:0] sd_buff_addr,
 	input wire [7:0] sd_buff_dout,
 	output logic [7:0] sd_buff_din,
@@ -182,7 +182,7 @@ u765_dpram sbuf
 	// SD card read / write access
 	.address_a({ds0, sd_buff_type,hds,sd_buff_addr}),
 	.data_a(sd_buff_dout),
-	.wren_a(sd_buff_wr & sd_ack),
+	.wren_a(sd_buff_wr & sd_ack[ds0]),
 	.q_a(sd_buff_din),
 	// FDC module read write access for processor
 	.address_b({ds0, sd_buff_type,hds,buff_addr}),
@@ -274,6 +274,7 @@ always @(posedge clk_sys) begin
 	reg [15:0] i_bytes_to_read;
 	reg [2:0] i_substate;
 	reg [1:0] old_mounted;
+	reg [1:0] old_ready;
 	reg [15:0] i_track_offset;
 	reg [5:0] ack;
 	reg sd_busy;
@@ -311,16 +312,22 @@ always @(posedge clk_sys) begin
 	//new image mounted
 	for(int i=0;i<2;i++) begin 
 		old_mounted[i] <= img_mounted[i];
-		if(old_mounted[i] & ~img_mounted[i]) begin
-			image_wp[i] <= img_wp;
+		old_ready[i] <= ready[i];
+		if(~old_mounted[i] & img_mounted[i]) begin
+			image_wp[i] <= img_wp[i];
 			image_size[i] <= img_size;
 			image_scan_state[i] <= |img_size; //hacky
 			image_ready[i] <= 0;
 			image_density[i] <= (img_size > 250000) ? CF2DD : CF2; // very hacky
-			int_state[i] <= 0;
+			int_state[i] <= 1;
 			seek_state[i] <= 0;
 			next_weak_sector[i] <= 0;
 			i_current_sector_pos[i] <= '{ 0, 0 };
+		end
+		if(old_ready[i] & ~ready[i]) begin
+		   int_state[i] <= 1;
+			image_scan_state[i] <= 0; 
+			image_ready[i] <= 0;
 		end
 	end
 
@@ -419,7 +426,7 @@ always @(posedge clk_sys) begin
 		ndma_mode <= 1'b1;
 	end else if (ce) begin
 
-		ack <= {ack[4:0], sd_ack};
+		ack <= {ack[4:0], sd_ack[ds0]};
 		if(ack[5:4] == 'b01)	begin
 			sd_rd <= 0;
 			sd_wr <= 0;
@@ -580,9 +587,9 @@ always @(posedge clk_sys) begin
 					m_data <= { 1'b0,
 								ready[ds0] & image_wp[ds0],         //write protected
 								motor[ds0] & available[ds0],        //ready - needed for controller detection
-								image_ready[ds0] & !pcn[ds0],       //track 0
-								image_ready[ds0] & image_sides[ds0],//two sides
-								image_ready[ds0] & hds,             //head address
+								ready[ds0] & !pcn[ds0],       //track 0
+								ready[ds0] & image_sides[ds0],//two sides
+								ready[ds0] & hds,             //head address
 								1'b0,                               //us1
 								ds0 };                              //us0
 					state <= COMMAND_IDLE;

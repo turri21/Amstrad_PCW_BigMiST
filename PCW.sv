@@ -186,14 +186,13 @@ wire  [1:0] buttons,switches;
 wire [31:0] sd_lba;
 wire  [1:0] sd_rd;
 wire  [1:0] sd_wr;
-wire        sd_ack;
+wire  [1:0] sd_ack;
 wire  [8:0] sd_buff_addr;
 wire  [7:0] sd_buff_dout;
 wire  [7:0] sd_buff_din;
 wire        sd_buff_wr;
 
 wire  [1:0] img_mounted;
-wire        img_readonly;
 wire [63:0] img_size;
 
 wire        scandoubler_disable;
@@ -257,7 +256,7 @@ user_io #(.STRLEN($size(CONF_STR)>>3), .SD_IMAGES(2), .FEATURES(32'h0 | (BIG_OSD
 	.sd_lba(sd_lba),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
-	.sd_ack(sd_ack),
+	.sd_ack_x(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_din(sd_buff_din),
 	.sd_dout(sd_buff_dout),
@@ -353,7 +352,6 @@ pcw_core pcw_core
    .HShift(status[21:18]),
 	
 	.img_mounted(img_mounted),
-	.img_readonly(img_readonly),
 	.img_size(img_size),
 	.density({1'b1, status[4]}),		// 8256/512 = A=SD, 9512+ A=DD
 
