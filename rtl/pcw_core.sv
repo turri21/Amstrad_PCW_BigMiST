@@ -1070,7 +1070,7 @@ psg soundchip(
     logic [11:0] speaker = 'b0;
     logic speaker_out;
     assign speaker = {speaker_out, 11'b0};
-    assign audio = {2'b00,ch_a} + {2'b00,ch_b} + {2'b00,ch_c} + {2'b00,speaker} + {3'b000,dacOut};
+    assign audio = {2'b00,ch_a} + {2'b00,ch_b} + {2'b00,ch_c} + {2'b00,speaker} + {~dacOut[7],dacOut[6:0],dacOut[7:3]};
     assign audiomix = audio;
 
 
