@@ -328,11 +328,15 @@ always @(posedge clk_sys) begin
 		   int_state[i] <= 1;
 			image_scan_state[i] <= 0; 
 			image_ready[i] <= 0;
+			seek_state[i] <= 0;
+			next_weak_sector[i] <= 0;
+			i_current_sector_pos[i] <= '{ 0, 0 };
+         pcn[i] <= 1;
 		end
 	end
 
 	if (ce) begin
-		i_current_drive <= ~i_current_drive;
+		i_current_drive <= din[0];// ~i_current_drive;
 	end
 
    //Process the image file

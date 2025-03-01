@@ -237,8 +237,8 @@ module pcw_core(
 	 
 	 
     // CPU / memory access flags
-    assign ior = cpurd | cpuiorq | ~cpum1;
-    assign iow = cpuwr | cpuiorq | ~cpum1;
+    assign ior = cpurd | cpuiorq; //| ~cpum1;
+    assign iow = cpuwr | cpuiorq; //| ~cpum1;
     assign memr = cpurd | cpumreq;
     assign memw = cpuwr | cpumreq;
     logic kbd_sel/* synthesis keep */;
@@ -1021,26 +1021,8 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
         else {dk_busdir,dk_bc} <= 2'b00;
     end 
 
-    logic [7:0] dk_out;
-    // Audio processing
-//    ym2149 soundchip(
-//        .DI(cpudo),
-//        .DO(dk_out),
-//		.BDIR(dk_busdir),
-//        .BC(dk_bc),
-//        .SEL(1'b0),
-//        .MODE(1'b0),
-//	    .CHANNEL_A(ch_a),
-//        .CHANNEL_B(ch_b),
-//        .CHANNEL_C(ch_c),
-//	      .IOA_in(dkjoy_io),
-//        .CE(snd_ce & dktronics),
-//        .RESET(reset),
-//        .CLK(clk_sys)
-//    ); 
-
-
-wire [7:0] dacOut;
+logic [7:0] dk_out;
+logic [7:0] dacOut;
 
 psg soundchip(
     .clock(snd_clk),       
@@ -1095,7 +1077,7 @@ psg soundchip(
         .a0(cpua[0]),
         .ready(u765_ready),
         .motor(motor_p),
-        .available(2`b11),
+        .available(u765_ready),
         .nRD(~fdc_sel | ior), 
         .nWR(~fdc_sel | iow),
         .din(cpudo),
@@ -1107,7 +1089,7 @@ psg soundchip(
 
         .img_mounted(img_mounted),
         .img_size(img_size[31:0]),
-        .img_wp(~u765_ready),
+        .img_wp(2`b0),
         .sd_lba(sd_lba),
         .sd_rd(sd_rd),
         .sd_wr(sd_wr),
