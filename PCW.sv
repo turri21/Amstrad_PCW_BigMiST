@@ -71,6 +71,15 @@ module guest_top
 	output        SDRAM2_CKE,
 `endif
 
+`ifdef PIN_REFLECTION
+   output        joy_clk,
+   input         joy_xclk,
+   output        joy_load,
+   input         joy_xload,
+   input         joy_data,
+   output        joy_xdata,
+`endif
+
 	output        AUDIO_L,
 	output        AUDIO_R,
 `ifdef I2S_AUDIO
@@ -166,6 +175,12 @@ localparam CONF_STR = {
 	"T0,Reset;",
 	"V,v",`BUILD_DATE
 };
+
+`ifdef PIN_REFLECTION
+assign joy_clk = joy_xclk;
+assign joy_load = joy_xload;
+assign joy_xdata = joy_data;
+`endif
 
 (* preserve *) wire clk_sys;
 wire locked;

@@ -181,10 +181,22 @@ set_location_assignment PIN_AD15 -to I2S_LRCK
 set_location_assignment PIN_AC15 -to I2S_BCK
 set_location_assignment PIN_AE14 -to I2S_DATA
 set_location_assignment PIN_C21 -to AUDIO_IN
+# joysticks in
+set_location_assignment PIN_AD4 -to joy_clk
+set_location_assignment PIN_AC4 -to joy_load
+set_location_assignment PIN_AD3 -to joy_data
+set_location_assignment PIN_A19 -to joy_select
+# joysticks from mb
+set_location_assignment PIN_AF4 -to joy_xclk
+set_location_assignment PIN_AE3 -to joy_xload
+set_location_assignment PIN_AF5 -to joy_xdata
+#
 set_global_assignment -name VERILOG_MACRO "I2S_AUDIO=1"
 set_global_assignment -name VERILOG_MACRO "USE_AUDIO_IN=1"
 set_global_assignment -name VERILOG_MACRO "USE_CLOCK_50=1"
 set_global_assignment -name VERILOG_MACRO "BIG_OSD=1"
+set_global_assignment -name VERILOG_MACRO "PIN_REFLECTION=1"
+
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:../build_id.tcl"
 
 set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 200 LFPM AIRFLOW"
