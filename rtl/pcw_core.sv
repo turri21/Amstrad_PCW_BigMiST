@@ -375,7 +375,7 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
             cpudi = kbd_sel ? kbd_data : ram_b_dout;
         end
     end
-    assign portF8 = {1'b0,vblank,fdc_status_latch,~ntsc,timer_misses};
+    assign portF8 = {1'b0,vblank,fdc_int_latch,~ntsc,timer_misses};
 
     logic int_mode_change = 1'b0;
 	always @(posedge clk_sys)
@@ -567,25 +567,26 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
     edge_det fdc_edge_det(.clk_sys(clk_sys), .signal(fdc_int), .pos_edge(fdc_pe), .neg_edge(fdc_ne));
     //  Drive FDC status latch (portF8) and NMI flag
     logic fdc_status_latch = 1'b0;
+	 logic fdc_int_latch /* synthesis keep */ = 1'b0;
     logic clear_nmi_flag = 1'b0;
     logic nmi_flag = 1'b0;
+
     always @(posedge clk_sys)
     begin
-        if(fdc_pe) 
-        begin
-            fdc_status_latch <= 1'b1;
-            if(disk_to_nmi) nmi_flag <= 1'b1;
+        if (fdc_pe) begin
+            fdc_int_latch <= 1'b1;
+            if (disk_to_nmi) nmi_flag <= 1'b1;
         end
-        else if(fdc_ne) fdc_status_latch <= 1'b0;
-		  
-        if(clear_nmi_flag) nmi_flag <= 1'b0;
+        else if (fdc_ne) fdc_int_latch <= 1'b0;
+        if (clear_nmi_flag) nmi_flag <= 1'b0;
     end
 
-
     // Detect timer interrupt firing from video controller (300 hz)
-    logic timer_pe;
+    //logic timer_pe;
     logic vid_timer;
-    edge_det timer_edge_det(.clk_sys(clk_sys), .signal(vid_timer), .pos_edge(timer_pe));
+	 logic last_vid_timer;
+    //edge_det timer_edge_det(.clk_sys(clk_sys), .signal(vid_timer), .pos_edge(timer_pe));
+	 
      // Detect int_mode_change edge
     logic int_mode_pe, int_mode_ne;
     edge_det int_mode_edge_det(.clk_sys(clk_sys), .signal(int_mode_change), .pos_edge(int_mode_pe), .neg_edge(int_mode_ne));
@@ -594,59 +595,47 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
     logic int_line = 1'b0;
     logic nmi_line = 1'b0;
     logic clear_timer = 1'b0;
-    logic [1:0] clear_timer_count = 'b0;   // //Clear timer after two M1 activations
 	 logic last_cpum1;
 	 
     // Timer flag and interrupt flag drivers
+  
+      // Timer flag and interrupt flag drivers
     always @(posedge clk_sys)
     begin
-	     last_cpum1 <= cpum1;
-        if(timer_pe) 
+        last_cpum1 <= cpum1;
+        last_vid_timer <= vid_timer;
+        int_line <= disk_to_int & fdc_int_latch;
+        nmi_line <= nmi_flag;
+        
+        if (~last_vid_timer & vid_timer)
         begin
-            // Timer count and int line processing
-            if(!(&timer_misses)) timer_misses <= timer_misses + 4'b1;
-            if(~iff1) timer_line <= 1'b0;
-            else timer_line <= 1'b1;
-            // NMI line processing occurs on timer
-            if(nmi_flag) nmi_line <= 1'b1;  // Trigger or hold NMI high
-            else nmi_line <= 1'b0;
-            // INT line processing
-            if(disk_to_int & fdc_status_latch & iff1) int_line <= 1'b1;
-            else int_line <= 1'b0;
+            if (!(&timer_misses)) timer_misses <= timer_misses + 4'b1;
+            timer_line <= 1'b1;
         end
+        
         // Detect clear timer start
-        if(~ior & cpua[7:0]==8'hf4) 
-        begin
-            clear_timer <= 1'b1; // Clear timer
-            clear_timer_count <= 'b0;
+        if (~ior && cpua[7:0] == 8'hf4 && clear_timer == 1'b0) begin
+            clear_timer <= 1'b1;
         end
-        // Clear timer processing
-          if(clear_timer)
-        begin
-            if(clear_timer_count == 2'b10)
-            begin
-                // Reached top so clear flag
-                clear_timer <= 1'b0;
-                timer_line <= 1'b0;
-                timer_misses <= 'b0;
-            end
-            else if (~cpum1 & last_cpum1) clear_timer_count <= clear_timer_count + 2'b01;
-        end
-        // Clear interrupts
-        if(int_mode_pe)
-        begin
-            if(disk_to_nmi) int_line <= 1'b0;
-            else if(disk_to_int) clear_nmi_flag <= 1'b1;    // Disk to int clears nmi
-            else begin
-                clear_nmi_flag <= 1'b1;
-                int_line <= 1'b0;      // Else clear both
-            end
-        end 
-        else begin
-            clear_nmi_flag <= 1'b0;
-        end
-    end
 
+        // Deferred timer cleaning
+        if (clear_timer == 1'b1)
+        begin
+            if (last_cpum1 & ~cpum1 & cpuiorq) 
+            begin
+                clear_timer <= 1'b0;
+                timer_misses <= 'b0;
+					 timer_line <= 1'b0;
+            end
+        end
+        
+        // Clear interrupts: Check if this makes sense
+        if (int_mode_pe) begin
+            if (disk_to_int) clear_nmi_flag <= 1'b1;
+        end 
+        else clear_nmi_flag <= 1'b0;
+    end
+  
 	logic nmi_sig/* synthesis keep */, int_sig/* synthesis keep */;
     assign nmi_sig = ~nmi_line;
     // Disk int and timer int combined
@@ -1077,7 +1066,7 @@ psg soundchip(
         .a0(cpua[0]),
         .ready(u765_ready),
         .motor(motor_p),
-        .available(u765_ready),
+        .available(2'b11),
         .nRD(~fdc_sel | ior), 
         .nWR(~fdc_sel | iow),
         .din(cpudo),
@@ -1089,7 +1078,7 @@ psg soundchip(
 
         .img_mounted(img_mounted),
         .img_size(img_size[31:0]),
-        .img_wp(2`b0),
+        .img_wp(2'b0),
         .sd_lba(sd_lba),
         .sd_rd(sd_rd),
         .sd_wr(sd_wr),

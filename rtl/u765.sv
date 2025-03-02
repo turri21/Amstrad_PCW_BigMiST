@@ -238,6 +238,8 @@ assign dout = a0 ? m_data : m_status;
 assign old_state = last_state;
 assign activity_led = (phase == PHASE_EXECUTE);
 
+
+
 always @(posedge clk_sys) begin
 
    //prefix internal CE protected registers with i_, so it's easier to write constraints
@@ -284,7 +286,7 @@ always @(posedge clk_sys) begin
 	reg [7:0] status[4] = '{0, 0, 0, 0}; //st0-3
 	state_t state;
 	state_t i_command;
-   	reg i_current_drive, i_scan_lock = 0;
+   reg i_current_drive, i_scan_lock = 0;
 	reg [3:0] i_srt; //stepping rate
 	reg [3:0] i_hut; //head unload time
 	reg [6:0] i_hlt; //head load time
@@ -335,12 +337,10 @@ always @(posedge clk_sys) begin
 		end
 	end
 
-	if (ce) begin
-		i_current_drive <= din[0];// ~i_current_drive;
-	end
 
    //Process the image file
 	if (ce) begin
+	   i_current_drive <= ~i_current_drive;
 		case (image_scan_state[i_current_drive])
 			0: ;//no new image
 			1: //read the first 512 byte
@@ -555,10 +555,10 @@ always @(posedge clk_sys) begin
 				COMMAND_SENSE_INTERRUPT_STATUS1:
 				if (~old_rd & rd & a0) begin
 					if (int_state[0]) begin
-						m_data <= ( ncn[0] == pcn[0] && ready[0] && image_ready[0] ) ? 8'h20 : 8'he8; //drive A: interrupt
+						m_data <= ( ncn[0] == pcn[0] && image_ready[0] ) ? 8'h20 : 8'he8; //drive A: interrupt
 						state <= COMMAND_SENSE_INTERRUPT_STATUS2;
 					end else if (int_state[1]) begin
-						m_data <= ( ncn[1] == pcn[1] && ready[1] && image_ready[1] ) ? 8'h21 : 8'he9; //drive B: interrupt
+						m_data <= ( ncn[1] == pcn[1] && image_ready[1] ) ? 8'h21 : 8'he9; //drive B: interrupt
 						state <= COMMAND_SENSE_INTERRUPT_STATUS2;
 					end else begin
 						m_data <= 8'h80;
@@ -566,14 +566,16 @@ always @(posedge clk_sys) begin
 					end;
 				end
 
-				COMMAND_SENSE_INTERRUPT_STATUS2:
-				if (~old_rd & rd & a0) begin
-					m_data <= int_state[0] ? 
-						((image_density[0]==CF2 && density[0]==CF2DD)  ? pcn[0] << 1 : pcn[0]) :  
-						((image_density[1]==CF2 && density[1]==CF2DD) ? pcn[1] << 1 : pcn[1]);
-					int_state[int_state[0] ? 0 : 1] <= 0;
-					state <= COMMAND_IDLE;
-				end
+COMMAND_SENSE_INTERRUPT_STATUS2:
+if (~old_rd & rd & a0) begin
+    // Devolver el PCN de la unidad que está reportando la interrupción
+    m_data <= int_state[0] ? 
+        ((image_density[0]==CF2 && density[0]==CF2DD) ? pcn[0] << 1 : pcn[0]) :  
+        ((image_density[1]==CF2 && density[1]==CF2DD) ? pcn[1] << 1 : pcn[1]);
+    
+    int_state <= '{ 0, 0 }; // Limpiar ambas interrupciones
+    state <= COMMAND_IDLE;
+end
 
 				COMMAND_SENSE_DRIVE_STATUS:
 				begin
