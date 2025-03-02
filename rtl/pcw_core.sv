@@ -79,14 +79,13 @@ module pcw_core(
 
 
     input wire [1:0]  img_mounted,
-	 input wire        img_readonly,
 	 input wire [31:0] img_size,
     input wire [1:0]  density,
 
 	 output logic [31:0] sd_lba,
 	 output logic [1:0] sd_rd,
 	 output logic [1:0] sd_wr,
-	 input  wire        sd_ack,
+	 input  wire  [1:0] sd_ack,
 	 input  wire  [8:0] sd_buff_addr,
 	 input  wire  [7:0] sd_buff_dout,
 	 output logic [7:0] sd_buff_din,
@@ -238,8 +237,8 @@ module pcw_core(
 	 
 	 
     // CPU / memory access flags
-    assign ior = cpurd | cpuiorq | ~cpum1;
-    assign iow = cpuwr | cpuiorq | ~cpum1;
+    assign ior = cpurd | cpuiorq; //| ~cpum1;
+    assign iow = cpuwr | cpuiorq; //| ~cpum1;
     assign memr = cpurd | cpumreq;
     assign memw = cpuwr | cpumreq;
     logic kbd_sel/* synthesis keep */;
@@ -376,7 +375,7 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
             cpudi = kbd_sel ? kbd_data : ram_b_dout;
         end
     end
-    assign portF8 = {1'b0,vblank,fdc_status_latch,~ntsc,timer_misses};
+    assign portF8 = {1'b0,vblank,fdc_int_latch,~ntsc,timer_misses};
 
     logic int_mode_change = 1'b0;
 	always @(posedge clk_sys)
@@ -568,25 +567,26 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
     edge_det fdc_edge_det(.clk_sys(clk_sys), .signal(fdc_int), .pos_edge(fdc_pe), .neg_edge(fdc_ne));
     //  Drive FDC status latch (portF8) and NMI flag
     logic fdc_status_latch = 1'b0;
+	 logic fdc_int_latch /* synthesis keep */ = 1'b0;
     logic clear_nmi_flag = 1'b0;
     logic nmi_flag = 1'b0;
+
     always @(posedge clk_sys)
     begin
-        if(fdc_pe) 
-        begin
-            fdc_status_latch <= 1'b1;
-            if(disk_to_nmi) nmi_flag <= 1'b1;
+        if (fdc_pe) begin
+            fdc_int_latch <= 1'b1;
+            if (disk_to_nmi) nmi_flag <= 1'b1;
         end
-        else if(fdc_ne) fdc_status_latch <= 1'b0;
-		  
-        if(clear_nmi_flag) nmi_flag <= 1'b0;
+        else if (fdc_ne) fdc_int_latch <= 1'b0;
+        if (clear_nmi_flag) nmi_flag <= 1'b0;
     end
 
-
     // Detect timer interrupt firing from video controller (300 hz)
-    logic timer_pe;
+    //logic timer_pe;
     logic vid_timer;
-    edge_det timer_edge_det(.clk_sys(clk_sys), .signal(vid_timer), .pos_edge(timer_pe));
+	 logic last_vid_timer;
+    //edge_det timer_edge_det(.clk_sys(clk_sys), .signal(vid_timer), .pos_edge(timer_pe));
+	 
      // Detect int_mode_change edge
     logic int_mode_pe, int_mode_ne;
     edge_det int_mode_edge_det(.clk_sys(clk_sys), .signal(int_mode_change), .pos_edge(int_mode_pe), .neg_edge(int_mode_ne));
@@ -595,59 +595,47 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
     logic int_line = 1'b0;
     logic nmi_line = 1'b0;
     logic clear_timer = 1'b0;
-    logic [1:0] clear_timer_count = 'b0;   // //Clear timer after two M1 activations
 	 logic last_cpum1;
 	 
     // Timer flag and interrupt flag drivers
+  
+      // Timer flag and interrupt flag drivers
     always @(posedge clk_sys)
     begin
-	     last_cpum1 <= cpum1;
-        if(timer_pe) 
+        last_cpum1 <= cpum1;
+        last_vid_timer <= vid_timer;
+        int_line <= disk_to_int & fdc_int_latch;
+        nmi_line <= nmi_flag;
+        
+        if (~last_vid_timer & vid_timer)
         begin
-            // Timer count and int line processing
-            if(!(&timer_misses)) timer_misses <= timer_misses + 4'b1;
-            if(~iff1) timer_line <= 1'b0;
-            else timer_line <= 1'b1;
-            // NMI line processing occurs on timer
-            if(nmi_flag) nmi_line <= 1'b1;  // Trigger or hold NMI high
-            else nmi_line <= 1'b0;
-            // INT line processing
-            if(disk_to_int & fdc_status_latch & iff1) int_line <= 1'b1;
-            else int_line <= 1'b0;
+            if (!(&timer_misses)) timer_misses <= timer_misses + 4'b1;
+            timer_line <= 1'b1;
         end
+        
         // Detect clear timer start
-        if(~ior & cpua[7:0]==8'hf4) 
-        begin
-            clear_timer <= 1'b1; // Clear timer
-            clear_timer_count <= 'b0;
+        if (~ior && cpua[7:0] == 8'hf4 && clear_timer == 1'b0) begin
+            clear_timer <= 1'b1;
         end
-        // Clear timer processing
-          if(clear_timer)
-        begin
-            if(clear_timer_count == 2'b10)
-            begin
-                // Reached top so clear flag
-                clear_timer <= 1'b0;
-                timer_line <= 1'b0;
-                timer_misses <= 'b0;
-            end
-            else if (~cpum1 & last_cpum1) clear_timer_count <= clear_timer_count + 2'b01;
-        end
-        // Clear interrupts
-        if(int_mode_pe)
-        begin
-            if(disk_to_nmi) int_line <= 1'b0;
-            else if(disk_to_int) clear_nmi_flag <= 1'b1;    // Disk to int clears nmi
-            else begin
-                clear_nmi_flag <= 1'b1;
-                int_line <= 1'b0;      // Else clear both
-            end
-        end 
-        else begin
-            clear_nmi_flag <= 1'b0;
-        end
-    end
 
+        // Deferred timer cleaning
+        if (clear_timer == 1'b1)
+        begin
+            if (last_cpum1 & ~cpum1 & cpuiorq) 
+            begin
+                clear_timer <= 1'b0;
+                timer_misses <= 'b0;
+					 timer_line <= 1'b0;
+            end
+        end
+        
+        // Clear interrupts: Check if this makes sense
+        if (int_mode_pe) begin
+            if (disk_to_int) clear_nmi_flag <= 1'b1;
+        end 
+        else clear_nmi_flag <= 1'b0;
+    end
+  
 	logic nmi_sig/* synthesis keep */, int_sig/* synthesis keep */;
     assign nmi_sig = ~nmi_line;
     // Disk int and timer int combined
@@ -1022,26 +1010,8 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
         else {dk_busdir,dk_bc} <= 2'b00;
     end 
 
-    logic [7:0] dk_out;
-    // Audio processing
-//    ym2149 soundchip(
-//        .DI(cpudo),
-//        .DO(dk_out),
-//		.BDIR(dk_busdir),
-//        .BC(dk_bc),
-//        .SEL(1'b0),
-//        .MODE(1'b0),
-//	    .CHANNEL_A(ch_a),
-//        .CHANNEL_B(ch_b),
-//        .CHANNEL_C(ch_c),
-//	      .IOA_in(dkjoy_io),
-//        .CE(snd_ce & dktronics),
-//        .RESET(reset),
-//        .CLK(clk_sys)
-//    ); 
-
-
-wire [7:0] dacOut;
+logic [7:0] dk_out;
+logic [7:0] dacOut;
 
 psg soundchip(
     .clock(snd_clk),       
@@ -1084,15 +1054,18 @@ psg soundchip(
     always @(posedge clk_sys) if(img_mounted[0]) u765_ready[0] <= |img_size;
     always @(posedge clk_sys) if(img_mounted[1]) u765_ready[1] <= |img_size;
 
+	 logic [1:0] motor_p;
+	 assign motor_p ={motor,motor};
     logic fdc_int;
-    u765 u765
+    
+	 u765 u765
     (
         .reset(reset),
         .clk_sys(clk_sys),
         .ce(disk_ce),
         .a0(cpua[0]),
         .ready(u765_ready),
-        .motor({motor,motor}),
+        .motor(motor_p),
         .available(2'b11),
         .nRD(~fdc_sel | ior), 
         .nWR(~fdc_sel | iow),
@@ -1105,7 +1078,7 @@ psg soundchip(
 
         .img_mounted(img_mounted),
         .img_size(img_size[31:0]),
-        .img_wp(img_readonly),
+        .img_wp(2'b0),
         .sd_lba(sd_lba),
         .sd_rd(sd_rd),
         .sd_wr(sd_wr),
