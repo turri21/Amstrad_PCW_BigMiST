@@ -308,6 +308,11 @@ always @(posedge clk_sys) begin
 	//reg i_mfm;
 	reg i_sk;
 
+   reg [7:0] i_scan_data;       // Buffer para el dato a comparar
+   reg [2:0] i_scan_result;     // Resultado de la comparación 
+   reg       i_scan_matched;    // Indicador de coincidencia encontrada
+
+	
 	buff_wait <= 0;
 	i_total_sectors = i_current_track_sectors[ds0][hds];
 
@@ -328,13 +333,11 @@ always @(posedge clk_sys) begin
 		end
 		if(old_ready[i] & ~ready[i]) begin
 		   int_state[i] <= 1;
-			image_scan_state[i] <= 0; 
-			image_ready[i] <= 0;
-			seek_state[i] <= 0;
-			next_weak_sector[i] <= 0;
-			i_current_sector_pos[i] <= '{ 0, 0 };
-         pcn[i] <= 1;
-		end
+        // Actualizar ST0 para indicar un cambio de disco
+        if (i == ds0) begin  
+          status[0] <= 8'h40;
+        end
+    	end
 	end
 
 
@@ -930,51 +933,113 @@ end
 					state <= COMMAND_RW_DATA_EXEC6;
 				end
 
-				//Read from/write to Speccy
 				COMMAND_RW_DATA_EXEC6:
 				if (~sd_busy & ~buff_wait) begin
-					if (!i_bytes_to_read) begin
-						//end of the current sector in buffer, so write it to SD card
-						if (i_write && buff_addr && i_seek_pos < image_size[ds0]) begin
-							sd_lba <= i_seek_pos[31:9];
-							sd_wr[ds0] <= 1;
-							sd_busy <= 1;
-						end
-						state <= COMMAND_RW_DATA_EXEC8;
-					end else if (~m_status[UPD765_MAIN_RQM]) begin
-						m_status[UPD765_MAIN_RQM] <= 1;	
-						if(ndma_mode) int_state[ds0] <= 1'b1;
-					end else if (~i_write & ~old_rd & rd & a0) begin
-						if (&buff_addr) begin
-							//sector continues on the next LBA
-							state <= COMMAND_RW_DATA_EXEC5;
-						end
-						//Speedlock: fuzz 'weak' sectors last bytes
-						//weak sector is cyl 0, head 0, sector 2
-						m_data <= buff_data_in;
+					 if (!i_bytes_to_read) begin
+						  // Final del sector actual en el buffer, escribirlo a la tarjeta SD
+						  if (i_write && buff_addr && i_seek_pos < image_size[ds0]) begin
+								sd_lba <= i_seek_pos[31:9];
+								sd_wr[ds0] <= 1;
+								sd_busy <= 1;
+						  end
+						  state <= COMMAND_RW_DATA_EXEC8;
+					 end else if (~m_status[UPD765_MAIN_RQM]) begin
+						  m_status[UPD765_MAIN_RQM] <= 1;    
+						  if(ndma_mode) int_state[ds0] <= 1'b1;
+					 end else if ((last_state == COMMAND_SCAN_EQUAL || 
+									 last_state == COMMAND_SCAN_LOW_OR_EQUAL ||
+									 last_state == COMMAND_SCAN_HIGH_OR_EQUAL) & 
+									 ~old_wr & wr & a0) begin
+						  // Recibir dato para comparar en SCAN
+						  i_scan_data <= din;
+						  m_status[UPD765_MAIN_RQM] <= 0;
+						  
+						  // Realizar la comparación según el tipo de comando SCAN
+						  case (last_state)
+								COMMAND_SCAN_EQUAL: begin 
+									 // Verifica si los bytes son iguales o alguno es 0xFF
+									 if ((buff_data_in == din) || 
+										  (buff_data_in == 8'hFF) || 
+										  (din == 8'hFF)) begin
+										  status[2] <= status[2] & 8'hF3; // Byte coincide
+										  i_scan_matched <= 1;
+									 end else begin
+										  status[2] <= (status[2] & 8'hF3) | 8'h04; // Byte no coincide
+									 end
+								end
+								
+								COMMAND_SCAN_LOW_OR_EQUAL: begin
+									 // Verifica si son iguales o si el byte del disco es menor que el de la CPU
+									 if ((buff_data_in == din) || 
+										  (buff_data_in == 8'hFF) || 
+										  (din == 8'hFF) || 
+										  (buff_data_in < din)) begin
+										  status[2] <= status[2] & 8'hF3; // Byte coincide
+										  i_scan_matched <= 1;
+									 end else begin
+										  status[2] <= (status[2] & 8'hF3) | 8'h04; // Byte no coincide
+									 end
+								end
+								
+								COMMAND_SCAN_HIGH_OR_EQUAL: begin
+									 // Verifica si son iguales o si el byte del disco es mayor que el de la CPU
+									 if ((buff_data_in == din) || 
+										  (buff_data_in == 8'hFF) || 
+										  (din == 8'hFF) || 
+										  (buff_data_in > din)) begin
+										  status[2] <= status[2] & 8'hF3; // Byte coincide
+										  i_scan_matched <= 1;
+									 end else begin
+										  status[2] <= (status[2] & 8'hF3) | 8'h04; // Byte no coincide
+									 end
+								end
+						  endcase
+						  
+						  // Procesar el siguiente byte
+						  if (i_sector_size) begin
+								i_sector_size <= i_sector_size - 1'd1;
+								buff_addr <= buff_addr + 1'd1;
+								buff_wait <= 1;
+								i_seek_pos <= i_seek_pos + 1'd1;
+						  end
+						  i_bytes_to_read <= i_bytes_to_read - 1'd1;
+						  
+						  // Si encontramos coincidencia o llegamos al final del sector
+						  if (i_scan_matched || !i_bytes_to_read) begin
+								state <= COMMAND_RW_DATA_EXEC8;
+						  end
+						  
+						  if(ndma_mode) int_state[ds0] <= 1'b0;
+					 end else if (~i_write & ~old_rd & rd & a0) begin
+						  if (&buff_addr) begin
+								// El sector continúa en el siguiente LBA
+								state <= COMMAND_RW_DATA_EXEC5;
+						  end
+						  
+						  // Manejo de sectores débiles para Speedlock
+						  m_data <= buff_data_in;
 
-						m_status[UPD765_MAIN_RQM] <= 0;
-						if (i_sector_size) begin
-							i_sector_size <= i_sector_size - 1'd1;
-							buff_addr <= buff_addr + 1'd1;
-							buff_wait <= 1;
-							i_seek_pos <= i_seek_pos + 1'd1;
-						end
-						i_bytes_to_read <= i_bytes_to_read - 1'd1;
-						i_timeout <= OVERRUN_TIMEOUT;
-						if(ndma_mode) int_state[ds0] <= 1'b0;
-					end else if (i_write & ~old_wr & wr & a0) begin
-						buff_wr <= 1;
-						buff_data_out <= din;
-						i_timeout <= OVERRUN_TIMEOUT;
-						m_status[UPD765_MAIN_RQM] <= 0;
-						state <= COMMAND_RW_DATA_EXEC7;
-						if(ndma_mode) int_state[ds0] <= 1'b0;
-					end else begin
-						i_timeout <= i_timeout - 1'd1;
-					end
+						  m_status[UPD765_MAIN_RQM] <= 0;
+						  if (i_sector_size) begin
+								i_sector_size <= i_sector_size - 1'd1;
+								buff_addr <= buff_addr + 1'd1;
+								buff_wait <= 1;
+								i_seek_pos <= i_seek_pos + 1'd1;
+						  end
+						  i_bytes_to_read <= i_bytes_to_read - 1'd1;
+						  i_timeout <= OVERRUN_TIMEOUT;
+						  if(ndma_mode) int_state[ds0] <= 1'b0;
+					 end else if (i_write & ~old_wr & wr & a0) begin
+						  //buff_wr <= 1;
+						  buff_data_out <= din;
+						  i_timeout <= OVERRUN_TIMEOUT;
+						  m_status[UPD765_MAIN_RQM] <= 0;
+						  state <= COMMAND_RW_DATA_EXEC7;
+						  if(ndma_mode) int_state[ds0] <= 1'b0;
+					 end else begin
+						  i_timeout <= i_timeout - 1'd1;
+					 end
 				end
-
 				COMMAND_RW_DATA_EXEC7:
 				begin
 					buff_wr <= 0;
@@ -1002,39 +1067,53 @@ end
 				//End of reading/writing sector, what's next?
 				COMMAND_RW_DATA_EXEC8:
 				if (~sd_busy) begin
-					if (~i_rtrack & ~(i_sk & (i_rw_deleted ^ i_sector_st2[6])) &
-						((i_sector_st1[5] & i_sector_st2[5]) | (i_rw_deleted ^ i_sector_st2[6]))) begin
-						//deleted mark or crc error
-						m_status[UPD765_MAIN_EXM] <= 0;
-						status[0] <= 8'h40;
-						status[1] <= i_sector_st1;
-						status[2] <= i_sector_st2 | (i_rw_deleted ? 8'h40 : 8'h0);
-						state <= COMMAND_READ_RESULTS;
-						int_state[ds0] <= 1'b1;
-						phase <= PHASE_RESPONSE;
-					end else	if ((i_rtrack ? i_current_sector : i_sector_r) == i_eot) begin
-						//end of cylinder.  Has to read all tracks to get here!
-						m_status[UPD765_MAIN_EXM] <= 0;
-						status[0] <= i_rtrack ? 8'h00 : 8'h00; // was 8'h40 
-						status[1] <= 8'h00;	// Was 0x80
-						status[2] <= (i_rw_deleted ^ i_sector_st2[6]) ? 8'h40 : 8'h0;
-						state <= COMMAND_READ_RESULTS;
-						int_state[ds0] <= 1'b1;
-						phase <= PHASE_RESPONSE;
-						
-					end else begin
-						//read the next sector (multi-sector transfer)
-						if (i_mt & image_sides[ds0]) begin
-							hds <= ~hds;
-							i_h <= ~i_h;
-							image_track_offsets_addr <= { pcn[ds0], ~hds };
-							buff_wait <= 1;
-						end
-						if (~i_mt | hds | ~image_sides[ds0]) i_r <= i_r + 1'd1;
-						state <= COMMAND_RW_DATA_EXEC2;
-					end
+					 if ((last_state == COMMAND_SCAN_EQUAL || 
+							last_state == COMMAND_SCAN_LOW_OR_EQUAL || 
+							last_state == COMMAND_SCAN_HIGH_OR_EQUAL)) begin
+						  // Scan completado
+						  m_status[UPD765_MAIN_EXM] <= 0;
+						  
+						  // Configura el estado final según resultado del scan
+						  // Nota: status[2] ya contiene el bit SH configurado en COMMAND_RW_DATA_EXEC6
+						  
+						  // Añadir información sobre la unidad actual a ST0
+						  status[0] <= {4'b0000, hds, 1'b0, ds0};
+						  status[1] <= 8'h00;
+						  
+						  state <= COMMAND_READ_RESULTS;
+						  int_state[ds0] <= 1'b1;
+						  phase <= PHASE_RESPONSE;
+					 end else if (~i_rtrack & ~(i_sk & (i_rw_deleted ^ status[2][6])) &
+						  ((status[1][5] & status[2][5]) | (i_rw_deleted ^ status[2][6]))) begin
+						  // Marca borrada o error CRC
+						  m_status[UPD765_MAIN_EXM] <= 0;
+						  status[0] <= 8'h40;
+						  status[1] <= i_sector_st1;
+						  status[2] <= i_sector_st2 | (i_rw_deleted ? 8'h40 : 8'h0);
+						  state <= COMMAND_READ_RESULTS;
+						  int_state[ds0] <= 1'b1;
+						  phase <= PHASE_RESPONSE;
+					 end else if ((i_rtrack ? i_current_sector : i_sector_r) == i_eot) begin
+						  // Final del cilindro
+						  m_status[UPD765_MAIN_EXM] <= 0;
+						  status[0] <= i_rtrack ? 8'h00 : 8'h00; // Era 8'h40 
+						  status[1] <= 8'h00;  // Era 0x80
+						  status[2] <= (i_rw_deleted ^ status[2][6]) ? 8'h40 : 8'h0;
+						  state <= COMMAND_READ_RESULTS;
+						  int_state[ds0] <= 1'b1;
+						  phase <= PHASE_RESPONSE;
+					 end else begin
+						  // Leer el siguiente sector (transferencia multi-sector)
+						  if (i_mt & image_sides[ds0]) begin
+								hds <= ~hds;
+								i_h <= ~i_h;
+								image_track_offsets_addr <= { pcn[ds0], ~hds };
+								buff_wait <= 1;
+						  end
+						  if (~i_mt | hds | ~image_sides[ds0]) i_r <= i_r + 1'd1;
+						  state <= COMMAND_RW_DATA_EXEC2;
+					 end
 				end
-
 				COMMAND_FORMAT_TRACK:
 				begin
 					int_state <= '{ 0, 0 };
@@ -1108,26 +1187,29 @@ end
 
 				COMMAND_SCAN_EQUAL:
 				begin
-					int_state <= '{ 0, 0 };
-					if (~old_wr & wr & a0) begin
-						state <= COMMAND_IDLE;
-					end
-				end
-
-				COMMAND_SCAN_HIGH_OR_EQUAL:
-				begin
-					int_state <= '{ 0, 0 };
-					if (~old_wr & wr & a0) begin
-						state <= COMMAND_IDLE;
-					end
+					 int_state <= '{ 0, 0 };
+					 i_scan_matched <= 0;
+					 i_command <= COMMAND_RW_DATA_EXEC;
+					 state <= COMMAND_SETUP;
+					 {i_rtrack, i_write, i_rw_deleted} <= 3'b000;  // Asegurar que i_write sea 0
 				end
 
 				COMMAND_SCAN_LOW_OR_EQUAL:
 				begin
-					int_state <= '{ 0, 0 };
-					if (~old_wr & wr & a0) begin
-						state <= COMMAND_IDLE;
-					end
+					 int_state <= '{ 0, 0 };
+					 i_scan_matched <= 0;
+					 i_command <= COMMAND_RW_DATA_EXEC;
+					 state <= COMMAND_SETUP;
+					 {i_rtrack, i_write, i_rw_deleted} <= 3'b000;  // Asegurar que i_write sea 0
+				end
+
+				COMMAND_SCAN_HIGH_OR_EQUAL:
+				begin
+					 int_state <= '{ 0, 0 };
+					 i_scan_matched <= 0;
+					 i_command <= COMMAND_RW_DATA_EXEC;
+					 state <= COMMAND_SETUP;
+					 {i_rtrack, i_write, i_rw_deleted} <= 3'b000;  // Asegurar que i_write sea 0
 				end
 
 				COMMAND_SETUP:
