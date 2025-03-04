@@ -237,8 +237,8 @@ module pcw_core(
 	 
 	 
     // CPU / memory access flags
-    assign ior = cpurd | cpuiorq; //| ~cpum1;
-    assign iow = cpuwr | cpuiorq; //| ~cpum1;
+    assign ior = cpurd | cpuiorq | ~cpum1;
+    assign iow = cpuwr | cpuiorq | ~cpum1;
     assign memr = cpurd | cpumreq;
     assign memw = cpuwr | cpumreq;
     logic kbd_sel/* synthesis keep */;
@@ -529,37 +529,71 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
         if(~iow && cpua[7:0]==8'hf5) portF5 <= cpudo;
         if(~iow && cpua[7:0]==8'hf6) portF6 <= cpudo;
         if(~iow && cpua[7:0]==8'hf7) portF7 <= cpudo;
-        if(~iow && cpua[7:0]==8'hf8) 
-        begin
-            // decode command for System Control Register
-            if(cpudo[3:0] == 4'd0) ; // Terminate bootstrap (do nothing)t
-            else if(cpudo[3:0] == 4'd2) begin           // Disk to NMI
-                disk_to_nmi <= 1'b1;
-                disk_to_int <= 1'b0;
-                int_mode_change <= 1'b1;
-            end
-            else if(cpudo[3:0] == 4'd3) begin           // Disk to INT
-                disk_to_int <= 1'b1;
-                disk_to_nmi <= 1'b0;
-                int_mode_change <= 1'b1;
-            end
-            else if(cpudo[3:0] == 4'd4) begin           // Disconnect Disk Int/NMI
-                disk_to_int <= 1'b0;
-                disk_to_nmi <= 1'b0;
-                int_mode_change <= 1'b1;
-            end
-            else if(cpudo[3:0] == 4'd5) begin           // Set FDC TC
-                tc <= 1'b1;
-            end            
-            else if(cpudo[3:0] == 4'd6) begin           // Clear FDC TC
-                tc <= 1'b0;
-            end            
-            else if(cpudo[3:0] == 4'd9) motor <= 1'b1;
-            else if(cpudo[3:0] == 4'd10) motor <= 1'b0;
-            else if(cpudo[3:0] == 4'd11) speaker_enable <= 1'b1;
-            else if(cpudo[3:0] == 4'd12) speaker_enable <= 1'b0;
-            //if(img_mounted) motor <= 0; // Reset on new image mounted
-        end
+        if(~iow && cpua[7:0]==8'hf8)
+		  // decode command for System Control Register
+				case(cpudo[3:0])
+					 4'd0: begin
+						  // Terminate bootstrap (do nothing)
+					 end
+					 4'd2: begin  // Disk to NMI
+						  disk_to_nmi <= 1'b1;
+						  disk_to_int <= 1'b0;
+						  int_mode_change <= 1'b1;
+					 end
+					 4'd3: begin  // Disk to INT
+						  disk_to_int <= 1'b1;
+						  disk_to_nmi <= 1'b0;
+						  int_mode_change <= 1'b1;
+					 end
+					 4'd4: begin  // Disconnect Disk Int/NMI
+						  disk_to_int <= 1'b0;
+						  disk_to_nmi <= 1'b0;
+						  int_mode_change <= 1'b1;
+					 end
+					 4'd5: begin  // Set FDC TC
+						  tc <= 1'b1;
+					 end
+					 4'd6: begin  // Clear FDC TC
+						  tc <= 1'b0;
+					 end
+					 4'd9: motor <= 1'b1;
+					 4'd10: motor <= 1'b0;
+					 4'd11: speaker_enable <= 1'b1;
+					 4'd12: speaker_enable <= 1'b0;
+					 default: begin
+						  // Optional default case
+					 end
+				endcase
+//        begin
+//            // decode command for System Control Register
+//            if(cpudo[3:0] == 4'd0) ; // Terminate bootstrap (do nothing)t
+//            else if(cpudo[3:0] == 4'd2) begin           // Disk to NMI
+//                disk_to_nmi <= 1'b1;
+//                disk_to_int <= 1'b0;
+//                int_mode_change <= 1'b1;
+//            end
+//            else if(cpudo[3:0] == 4'd3) begin           // Disk to INT
+//                disk_to_int <= 1'b1;
+//                disk_to_nmi <= 1'b0;
+//                int_mode_change <= 1'b1;
+//            end
+//            else if(cpudo[3:0] == 4'd4) begin           // Disconnect Disk Int/NMI
+//                disk_to_int <= 1'b0;
+//                disk_to_nmi <= 1'b0;
+//                int_mode_change <= 1'b1;
+//            end
+//            else if(cpudo[3:0] == 4'd5) begin           // Set FDC TC
+//                tc <= 1'b1;
+//            end            
+//            else if(cpudo[3:0] == 4'd6) begin           // Clear FDC TC
+//                tc <= 1'b0;
+//            end            
+//            else if(cpudo[3:0] == 4'd9) motor <= 1'b1;
+//            else if(cpudo[3:0] == 4'd10) motor <= 1'b0;
+//            else if(cpudo[3:0] == 4'd11) speaker_enable <= 1'b1;
+//            else if(cpudo[3:0] == 4'd12) speaker_enable <= 1'b0;
+//            //if(img_mounted) motor <= 0; // Reset on new image mounted
+//        end
     end
 
     // detect fdc interrupt edge
@@ -598,34 +632,35 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
 	 logic last_cpum1;
 	 
     // Timer flag and interrupt flag drivers
-  
-      // Timer flag and interrupt flag drivers
     always @(posedge clk_sys)
     begin
         last_cpum1 <= cpum1;
         last_vid_timer <= vid_timer;
-        int_line <= disk_to_int & fdc_int_latch;
+        int_line <= 1'b0;
         nmi_line <= nmi_flag;
         
         if (~last_vid_timer & vid_timer)
-        begin
+       begin
             if (!(&timer_misses)) timer_misses <= timer_misses + 4'b1;
             timer_line <= 1'b1;
+            int_line <= disk_to_int & fdc_int_latch;
         end
+
         
         // Detect clear timer start
-        if (~ior && cpua[7:0] == 8'hf4 && clear_timer == 1'b0) begin
+        if (~ior && (cpua[7:0] == 8'hf4) && clear_timer == 1'b0) begin
             clear_timer <= 1'b1;
         end
 
+       
         // Deferred timer cleaning
         if (clear_timer == 1'b1)
         begin
-            if (last_cpum1 & ~cpum1 & cpuiorq) 
+            if (~last_cpum1 & cpum1 & cpuiorq)
             begin
                 clear_timer <= 1'b0;
                 timer_misses <= 'b0;
-					 timer_line <= 1'b0;
+                timer_line <= 1'b0;
             end
         end
         
@@ -635,8 +670,9 @@ wire iow_falling_edge = (iow_prev == 1'b0) && (iow == 1'b1);
         end 
         else clear_nmi_flag <= 1'b0;
     end
+
   
-	logic nmi_sig/* synthesis keep */, int_sig/* synthesis keep */;
+	 logic nmi_sig/* synthesis keep */, int_sig/* synthesis keep */;
     assign nmi_sig = ~nmi_line;
     // Disk int and timer int combined
     assign int_sig = nmi_line ? 1'b1 : (~int_line & ~timer_line);   // Don't fire if NMI outstanding
@@ -1075,6 +1111,7 @@ psg soundchip(
         .tc(tc),
         .density(density),
         .activity_led(LED),
+		  //.fast(1),
 
         .img_mounted(img_mounted),
         .img_size(img_size[31:0]),
@@ -1082,7 +1119,8 @@ psg soundchip(
         .sd_lba(sd_lba),
         .sd_rd(sd_rd),
         .sd_wr(sd_wr),
-        .sd_ack(sd_ack),
+		  .sd_ack(sd_ack),
+        //.sd_ack(sd_ack[1]|sd_ack[0]),
         .sd_buff_addr(sd_buff_addr),
         .sd_buff_dout(sd_buff_dout),
         .sd_buff_din(sd_buff_din),

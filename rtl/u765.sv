@@ -573,7 +573,8 @@ if (~old_rd & rd & a0) begin
         ((image_density[0]==CF2 && density[0]==CF2DD) ? pcn[0] << 1 : pcn[0]) :  
         ((image_density[1]==CF2 && density[1]==CF2DD) ? pcn[1] << 1 : pcn[1]);
     
-    int_state <= '{ 0, 0 }; // Limpiar ambas interrupciones
+    //int_state <= '{ 0, 0 }; // Limpiar ambas interrupciones
+	 int_state[int_state[0] ? 0 : 1] <= 0;
     state <= COMMAND_IDLE;
 end
 
