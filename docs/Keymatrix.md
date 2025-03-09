@@ -1,3 +1,5 @@
+# Amstrad PCW keyboard matrix
+
 |-----------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|
 | **0**     | Keypad 2    | Keypad 3    | Keypad 6    | Keypad 9    | Paste       | F1/F2       | Keypad 0    | F3/F4       |
 | **1**     | Keypad 1    | Keypad 5    | Keypad 4    | Keypad 8    | Copy        | Cut         | PTR         | Exit        |
